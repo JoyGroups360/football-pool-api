@@ -3,3 +3,30 @@ spring:
     name: auth_service
   config:
     import: optional:configserver:http://localhost:8888
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: joleogon174@gmail.com
+    password: adkn wewa abmc egxw
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+# Email Configuration
+mail:
+  brevo:
+    api-key: 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
+    api-url: https://api.brevo.com/v3/smtp/email
+    sender-email: ${SENDER_EMAIL:joleogon174@gmail.com}
+    sender-name: Football Pool
+  dev-mode: false
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODlBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWg==}
+  expiration: 86400000  # 24 hours in milliseconds
+  refresh-expiration: 604800000  # 7 days in milliseconds
