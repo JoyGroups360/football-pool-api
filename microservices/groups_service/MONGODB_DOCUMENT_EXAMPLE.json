@@ -1,0 +1,317 @@
+{
+  "_id": {
+    "$oid": "691a192a53148e413d0e49b0"
+  },
+  "groupId": "691a192a53148e413d0e49b0",
+  "creatorUserId": "6908d0864077087454146d5c",
+  "competitionId": "club-world-cup",
+  "competitionName": "FIFA Club World Cup",
+  "competitionImage": "https://images.mlssoccer.com/image/private/t_editorial_landscape_12_desktop/mls/xjjsh1obnofzbgo4opub.png",
+  "name": "Chiqui",
+  "teamIds": ["team1", "team2", "team3", "team4"],
+  "userIds": ["6908d0864077087454146d5c"],
+  "invitedEmails": [],
+  
+  "tournamentStructure": {
+    "tournamentFormat": "groups-then-knockout",
+    "currentStage": "group-stage",
+    "config": {
+      "totalTeams": 4,
+      "numberOfGroups": 1,
+      "teamsPerGroup": 4,
+      "teamsQualifyPerGroup": 2,
+      "hasGroupStage": true,
+      "hasKnockoutStage": true,
+      "knockoutRounds": ["round-of-16", "quarter-finals", "semi-finals", "third-place", "final"]
+    },
+    "stages": {
+      "group-stage": {
+        "stageId": "group-stage",
+        "stageName": "Fase de Grupos",
+        "type": "groups",
+        "isActive": true,
+        "isCompleted": false,
+        "order": 1,
+        "groups": [
+          {
+            "groupLetter": "A",
+            "groupName": "Grupo A",
+            "teamsPerGroup": 4,
+            "teamsQualify": 2,
+            "teams": [
+              {
+                "teamId": "team1",
+                "teamName": "Real Madrid",
+                "teamFlag": "🇪🇸",
+                "played": 2,
+                "won": 2,
+                "drawn": 0,
+                "lost": 0,
+                "goalsFor": 5,
+                "goalsAgainst": 2,
+                "goalDifference": 3,
+                "points": 6,
+                "position": 1
+              },
+              {
+                "teamId": "team2",
+                "teamName": "Manchester City",
+                "teamFlag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+                "played": 2,
+                "won": 1,
+                "drawn": 0,
+                "lost": 1,
+                "goalsFor": 3,
+                "goalsAgainst": 3,
+                "goalDifference": 0,
+                "points": 3,
+                "position": 2
+              },
+              {
+                "teamId": "team3",
+                "teamName": "Bayern Munich",
+                "teamFlag": "🇩🇪",
+                "played": 2,
+                "won": 0,
+                "drawn": 1,
+                "lost": 1,
+                "goalsFor": 2,
+                "goalsAgainst": 3,
+                "goalDifference": -1,
+                "points": 1,
+                "position": 3
+              },
+              {
+                "teamId": "team4",
+                "teamName": "PSG",
+                "teamFlag": "🇫🇷",
+                "played": 2,
+                "won": 0,
+                "drawn": 1,
+                "lost": 1,
+                "goalsFor": 2,
+                "goalsAgainst": 4,
+                "goalDifference": -2,
+                "points": 1,
+                "position": 4
+              }
+            ],
+            "qualifiedTeamIds": ["team1", "team2"],
+            "matches": [
+              {
+                "matchId": "group-a-match-1",
+                "matchNumber": "1",
+                "stageId": "group-stage",
+                "groupLetter": "A",
+                "team1Id": "team1",
+                "team1Name": "Real Madrid",
+                "team1Flag": "🇪🇸",
+                "team2Id": "team2",
+                "team2Name": "Manchester City",
+                "team2Flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+                "team1Score": 3,
+                "team2Score": 1,
+                "winnerTeamId": "team1",
+                "loserTeamId": "team2",
+                "isDraw": false,
+                "matchDate": null,
+                "playedDate": {
+                  "$date": "2025-11-20T15:00:00Z"
+                },
+                "isPlayed": true,
+                "venue": "Estadio Santiago Bernabéu",
+                "status": "finished",
+                "nextMatchId": null,
+                "nextStageId": null,
+                "matchday": 1
+              },
+              {
+                "matchId": "group-a-match-2",
+                "matchNumber": "2",
+                "stageId": "group-stage",
+                "groupLetter": "A",
+                "team1Id": "team1",
+                "team1Name": "Real Madrid",
+                "team1Flag": "🇪🇸",
+                "team2Id": "team3",
+                "team2Name": "Bayern Munich",
+                "team2Flag": "🇩🇪",
+                "team1Score": 2,
+                "team2Score": 1,
+                "winnerTeamId": "team1",
+                "loserTeamId": "team3",
+                "isDraw": false,
+                "matchDate": null,
+                "playedDate": {
+                  "$date": "2025-11-21T15:00:00Z"
+                },
+                "isPlayed": true,
+                "venue": "Allianz Arena",
+                "status": "finished",
+                "nextMatchId": null,
+                "nextStageId": null,
+                "matchday": 1
+              },
+              {
+                "matchId": "group-a-match-3",
+                "matchNumber": "3",
+                "stageId": "group-stage",
+                "groupLetter": "A",
+                "team1Id": "team2",
+                "team1Name": "Manchester City",
+                "team1Flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+                "team2Id": "team3",
+                "team2Name": "Bayern Munich",
+                "team2Flag": "🇩🇪",
+                "team1Score": 2,
+                "team2Score": 2,
+                "winnerTeamId": null,
+                "loserTeamId": null,
+                "isDraw": true,
+                "matchDate": null,
+                "playedDate": {
+                  "$date": "2025-11-22T15:00:00Z"
+                },
+                "isPlayed": true,
+                "venue": "Etihad Stadium",
+                "status": "finished",
+                "nextMatchId": null,
+                "nextStageId": null,
+                "matchday": 2
+              },
+              {
+                "matchId": "group-a-match-4",
+                "matchNumber": "4",
+                "stageId": "group-stage",
+                "groupLetter": "A",
+                "team1Id": "team1",
+                "team1Name": "Real Madrid",
+                "team1Flag": "🇪🇸",
+                "team2Id": "team4",
+                "team2Name": "PSG",
+                "team2Flag": "🇫🇷",
+                "team1Score": null,
+                "team2Score": null,
+                "winnerTeamId": null,
+                "loserTeamId": null,
+                "isDraw": null,
+                "matchDate": {
+                  "$date": "2025-11-25T20:00:00Z"
+                },
+                "playedDate": null,
+                "isPlayed": false,
+                "venue": null,
+                "status": "scheduled",
+                "nextMatchId": null,
+                "nextStageId": null,
+                "matchday": 2
+              },
+              {
+                "matchId": "group-a-match-5",
+                "matchNumber": "5",
+                "stageId": "group-stage",
+                "groupLetter": "A",
+                "team1Id": "team2",
+                "team1Name": "Manchester City",
+                "team1Flag": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+                "team2Id": "team4",
+                "team2Name": "PSG",
+                "team2Flag": "🇫🇷",
+                "team1Score": null,
+                "team2Score": null,
+                "winnerTeamId": null,
+                "loserTeamId": null,
+                "isDraw": null,
+                "matchDate": {
+                  "$date": "2025-11-26T20:00:00Z"
+                },
+                "playedDate": null,
+                "isPlayed": false,
+                "venue": null,
+                "status": "scheduled",
+                "nextMatchId": null,
+                "nextStageId": null,
+                "matchday": 3
+              },
+              {
+                "matchId": "group-a-match-6",
+                "matchNumber": "6",
+                "stageId": "group-stage",
+                "groupLetter": "A",
+                "team1Id": "team3",
+                "team1Name": "Bayern Munich",
+                "team2Id": "team4",
+                "team2Name": "PSG",
+                "team2Flag": "🇫🇷",
+                "team1Score": null,
+                "team2Score": null,
+                "winnerTeamId": null,
+                "loserTeamId": null,
+                "isDraw": null,
+                "matchDate": {
+                  "$date": "2025-11-27T20:00:00Z"
+                },
+                "playedDate": null,
+                "isPlayed": false,
+                "venue": null,
+                "status": "scheduled",
+                "nextMatchId": null,
+                "nextStageId": null,
+                "matchday": 3
+              }
+            ]
+          }
+        ],
+        "qualifiedTeamIds": ["team1", "team2"]
+      },
+      "round-of-16": {
+        "stageId": "round-of-16",
+        "stageName": "Octavos de Final",
+        "type": "knockout",
+        "isActive": false,
+        "isCompleted": false,
+        "order": 2,
+        "matches": [
+          {
+            "matchId": "round-of-16-1",
+            "matchNumber": "1",
+            "stageId": "round-of-16",
+            "groupLetter": null,
+            "team1Id": null,
+            "team1Name": null,
+            "team1Flag": null,
+            "team2Id": null,
+            "team2Name": null,
+            "team2Flag": null,
+            "team1Score": null,
+            "team2Score": null,
+            "winnerTeamId": null,
+            "loserTeamId": null,
+            "isDraw": null,
+            "matchDate": null,
+            "playedDate": null,
+            "isPlayed": false,
+            "venue": null,
+            "status": "scheduled",
+            "nextMatchId": "quarter-finals-1",
+            "nextStageId": "quarter-finals",
+            "matchday": null
+          }
+        ],
+        "qualifiedTeamIds": []
+      }
+    }
+  },
+  
+  "createdAt": {
+    "$date": "2025-11-16T18:34:18.879Z"
+  },
+  "updatedAt": {
+    "$date": "2025-11-20T18:00:00.000Z"
+  },
+  "enabledAt": {
+    "$date": "2025-11-16T18:34:18.879Z"
+  },
+  "_class": "com.leon.ideas.groups.model.Group"
+}
+

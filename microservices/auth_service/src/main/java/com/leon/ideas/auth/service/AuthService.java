@@ -78,6 +78,42 @@ public class AuthService {
         return authRepository.findById(userId);
     }
 
+    /**
+     * Add a groupId to the user's groups array.
+     */
+    public ResponseEntity<Document> addGroupToUser(String userId, String groupId) {
+        if (userId == null || userId.trim().isEmpty() || groupId == null || groupId.trim().isEmpty()) {
+            return new ResponseEntity<>(
+                new Document("error", "User ID and group ID are required"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
+        if (!userId.matches("^[0-9a-fA-F]{24}$")) {
+            return new ResponseEntity<>(
+                new Document("error", "Invalid user ID format"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
+        Document user = authRepository.findUserById(userId);
+        if (user == null) {
+            return new ResponseEntity<>(
+                new Document("error", "User not found"),
+                HttpStatus.NOT_FOUND
+            );
+        }
+        
+        authRepository.addGroupToUser(userId, groupId);
+        
+        Document response = new Document();
+        response.put("message", "Group added to user successfully");
+        response.put("userId", userId);
+        response.put("groupId", groupId);
+        
+        return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
     public List<Document> getAllUsers() {
         try {
             System.out.println("🔍 DEBUG - Getting all users...");
@@ -151,6 +187,17 @@ public class AuthService {
         newUser.put("zipcode", body.getString("zipcode"));
         newUser.put("preferredTeams", body.get("preferredTeams", List.class));
         newUser.put("preferredLeagues", body.get("preferredLeagues", List.class));
+        
+        // Profile image as base64 (optional)
+        if (body.containsKey("profileImage") && body.get("profileImage") != null) {
+            String profileImageBase64 = body.getString("profileImage");
+            // Validate base64 format (optional - starts with data:image/ or is pure base64)
+            if (profileImageBase64 != null && !profileImageBase64.trim().isEmpty()) {
+                newUser.put("profileImage", profileImageBase64);
+                System.out.println("✅ Profile image added to user (length: " + profileImageBase64.length() + " chars)");
+            }
+        }
+        
         authRepository.saveUser(newUser);
         convertIdToString(newUser);
         return new ResponseEntity<>(newUser, HttpStatus.CREATED);
@@ -304,7 +351,22 @@ public class AuthService {
         Document filteredUpdates = new Document();
         for (String key : body.keySet()) {
             if (!protectedFields.contains(key)) {
-                filteredUpdates.put(key, body.get(key));
+                Object value = body.get(key);
+                
+                // Special handling for profileImage (base64)
+                if ("profileImage".equals(key) && value instanceof String) {
+                    String profileImageBase64 = (String) value;
+                    if (profileImageBase64 != null && !profileImageBase64.trim().isEmpty()) {
+                        filteredUpdates.put(key, profileImageBase64);
+                        System.out.println("✅ Profile image update requested (length: " + profileImageBase64.length() + " chars)");
+                    } else {
+                        // Allow setting to null/empty to remove image
+                        filteredUpdates.put(key, null);
+                        System.out.println("✅ Profile image removal requested");
+                    }
+                } else {
+                    filteredUpdates.put(key, value);
+                }
             }
         }
         
@@ -510,13 +572,26 @@ public class AuthService {
         // Update allowed fields
         List<String> allowedFields = List.of(
             "preferredTeams", "preferredLeagues", "birth", "country", 
-            "state", "city", "phone", "zipcode"
+            "state", "city", "phone", "zipcode", "profileImage", "name", "lastName"
         );
         
         Document updates = new Document();
         for (String field : allowedFields) {
             if (body.containsKey(field)) {
-                updates.put(field, body.get(field));
+                Object value = body.get(field);
+                
+                // Special handling for profileImage (base64)
+                if ("profileImage".equals(field) && value instanceof String) {
+                    String profileImageBase64 = (String) value;
+                    if (profileImageBase64 != null && !profileImageBase64.trim().isEmpty()) {
+                        updates.put(field, profileImageBase64);
+                        System.out.println("✅ Profile image update in completeProfile (length: " + profileImageBase64.length() + " chars)");
+                    } else {
+                        updates.put(field, null); // Allow removing image
+                    }
+                } else {
+                    updates.put(field, value);
+                }
             }
         }
         
@@ -590,5 +665,161 @@ public class AuthService {
         response.remove("passwords");
         
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    /**
+     * Check if email exists in the system
+     */
+    public ResponseEntity<Document> checkEmailExists(String email) {
+        try {
+            if (email == null || email.trim().isEmpty()) {
+                Document error = new Document("error", "Email is required");
+                return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+            }
+
+            Document user = authRepository.findUserByEmail(email);
+            Document response = new Document();
+            
+            if (user != null) {
+                convertIdToString(user);
+                response.put("exists", true);
+                response.put("userId", user.getString("_id"));
+                response.put("name", user.getString("name"));
+                response.put("lastName", user.getString("lastName"));
+                response.put("email", user.getString("email"));
+                response.put("profileImage", user.getString("profileImage"));
+            } else {
+                response.put("exists", false);
+                response.put("email", email);
+            }
+            
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            System.err.println("❌ Error checking email: " + e.getMessage());
+            Document error = new Document("error", "Error checking email: " + e.getMessage());
+            return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+    
+    /**
+     * Save or update a match prediction for a user
+     */
+    public ResponseEntity<Document> savePrediction(String userId, String groupId, String matchId, Integer team1Score, Integer team2Score) {
+        if (userId == null || groupId == null || matchId == null || team1Score == null || team2Score == null) {
+            return new ResponseEntity<>(
+                new Document("error", "All fields are required: userId, groupId, matchId, team1Score, team2Score"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
+        try {
+            authRepository.savePrediction(userId, groupId, matchId, team1Score, team2Score);
+            Document response = new Document();
+            response.put("message", "Prediction saved successfully");
+            response.put("userId", userId);
+            response.put("groupId", groupId);
+            response.put("matchId", matchId);
+            response.put("team1Score", team1Score);
+            response.put("team2Score", team2Score);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            System.err.println("❌ Error saving prediction: " + e.getMessage());
+            e.printStackTrace();
+            return new ResponseEntity<>(
+                new Document("error", "Error saving prediction: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+    
+    /**
+     * Get all predictions for a user, optionally filtered by groupId
+     */
+    public ResponseEntity<Document> getUserPredictions(String userId, String groupId) {
+        if (userId == null || userId.trim().isEmpty()) {
+            return new ResponseEntity<>(
+                new Document("error", "User ID is required"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
+        try {
+            List<Document> predictions = authRepository.getUserPredictions(userId, groupId);
+            Document response = new Document();
+            response.put("userId", userId);
+            response.put("groupId", groupId != null ? groupId : "all");
+            response.put("predictions", predictions);
+            response.put("count", predictions.size());
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            System.err.println("❌ Error getting predictions: " + e.getMessage());
+            e.printStackTrace();
+            return new ResponseEntity<>(
+                new Document("error", "Error getting predictions: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+    
+    /**
+     * Get a specific prediction for a user, group, and match
+     */
+    public ResponseEntity<Document> getUserPrediction(String userId, String groupId, String matchId) {
+        if (userId == null || groupId == null || matchId == null) {
+            return new ResponseEntity<>(
+                new Document("error", "userId, groupId, and matchId are required"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
+        try {
+            Document prediction = authRepository.getUserPrediction(userId, groupId, matchId);
+            Document response = new Document();
+            if (prediction != null) {
+                response.put("prediction", prediction);
+                response.put("exists", true);
+            } else {
+                response.put("prediction", null);
+                response.put("exists", false);
+            }
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            System.err.println("❌ Error getting prediction: " + e.getMessage());
+            e.printStackTrace();
+            return new ResponseEntity<>(
+                new Document("error", "Error getting prediction: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+    
+    /**
+     * Update prediction points after calculating scores
+     */
+    public ResponseEntity<Document> updatePredictionPoints(String userId, String groupId, String matchId, Integer points) {
+        if (userId == null || groupId == null || matchId == null || points == null) {
+            return new ResponseEntity<>(
+                new Document("error", "All fields are required"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
+        try {
+            authRepository.updatePredictionPoints(userId, groupId, matchId, points);
+            Document response = new Document();
+            response.put("message", "Prediction points updated successfully");
+            response.put("userId", userId);
+            response.put("groupId", groupId);
+            response.put("matchId", matchId);
+            response.put("points", points);
+            return new ResponseEntity<>(response, HttpStatus.OK);
+        } catch (Exception e) {
+            System.err.println("❌ Error updating prediction points: " + e.getMessage());
+            e.printStackTrace();
+            return new ResponseEntity<>(
+                new Document("error", "Error updating prediction points: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
     }
 }

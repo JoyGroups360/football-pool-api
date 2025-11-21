@@ -1,0 +1,19 @@
+server:
+  port: 1291
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 30
+
+# JWT Configuration (same as auth_service for token validation)
+jwt:
+  secret: ${JWT_SECRET:bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODlBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWg==}
+
+
+

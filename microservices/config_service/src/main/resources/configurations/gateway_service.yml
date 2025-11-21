@@ -44,6 +44,24 @@ spring:
             - Path=/football-pool/v1/api/auth/**
           filters:
             - PreserveHostHeader
+        - id: competitions
+          uri: http://localhost:1291
+          predicates:
+            - Path=/football-pool/v1/api/competitions/**
+          filters:
+            - PreserveHostHeader
+        - id: groups
+          uri: http://localhost:1292
+          predicates:
+            - Path=/football-pool/v1/api/groups/**
+          filters:
+            - PreserveHostHeader
+        - id: payments
+          uri: http://localhost:1293
+          predicates:
+            - Path=/football-pool/v1/api/payments/**
+          filters:
+            - PreserveHostHeader
         # - id: companies
         #   uri: http://localhost:1090
         #   predicates:

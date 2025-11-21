@@ -1,0 +1,11 @@
+com/leon/ideas/competitions/model/Competition.class
+com/leon/ideas/competitions/controller/CompetitionsController.class
+com/leon/ideas/competitions/configs/CorsConfig.class
+com/leon/ideas/competitions/security/JwtAuthenticationFilter.class
+com/leon/ideas/competitions/service/JwtService.class
+com/leon/ideas/competitions/configs/SecurityConfig.class
+com/leon/ideas/competitions/security/JwtAuthenticationEntryPoint.class
+com/leon/ideas/competitions/service/CompetitionsService.class
+com/leon/ideas/competitions/configs/MongoConfig.class
+com/leon/ideas/competitions/CompetitionsServiceApplication.class
+com/leon/ideas/competitions/repository/CompetitionsRepository.class

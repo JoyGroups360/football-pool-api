@@ -1,0 +1,16 @@
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/GroupsServiceApplication.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/configs/MailConfig.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/configs/MongoConfig.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/configs/RestTemplateConfig.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/configs/SecurityConfig.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/controller/GroupsController.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/model/Group.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/repository/GroupsRepository.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/security/JwtAuthenticationEntryPoint.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/security/JwtAuthenticationFilter.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/security/JwtService.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/service/AuthClientService.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/service/CompetitionsClientService.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/service/EmailService.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/service/GroupsService.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/groups_service/src/main/java/com/leon/ideas/groups/service/UserValidationService.java

@@ -1,0 +1,39 @@
+server:
+  port: 1293
+
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/football_pool_payments
+      database: football_pool_payments
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    hostname: localhost
+
+# JWT Configuration (must match auth_service)
+jwt:
+  secret: bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODlBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWg==
+  expiration: 86400000  # 24 hours in milliseconds
+
+# Stripe Configuration
+stripe:
+  api:
+    key:
+      secret: ${STRIPE_SECRET_KEY:sk_test_your_stripe_secret_key_here}
+    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_stripe_public_key_here}
+  webhook:
+    secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_webhook_secret_here}
+
+logging:
+  level:
+    com.leon.ideas.payments: DEBUG
+    com.stripe: INFO
+    org.springframework.web: INFO
+

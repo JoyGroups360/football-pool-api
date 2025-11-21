@@ -60,6 +60,18 @@ public class AuthController {
         return authService.sendResetCode(email);
     }
 
+    /**
+     * POST /football-pool/v1/api/auth/{userId}/groups/{groupId}
+     * Add a groupId to the user's groups array
+     */
+    @PostMapping("/{userId}/groups/{groupId}")
+    public ResponseEntity<Document> addGroupToUser(
+            @PathVariable String userId,
+            @PathVariable String groupId
+    ) {
+        return authService.addGroupToUser(userId, groupId);
+    }
+
     @PostMapping("/reset-password")
     public ResponseEntity<Document> resetPassword(@RequestBody Map<String, String> body) {
         String email = body.get("email");
@@ -190,5 +202,70 @@ public class AuthController {
     @PutMapping("/complete-profile")
     public ResponseEntity<Document> completeProfile(@RequestBody Document body, @RequestParam String userId) {
         return authService.completeProfile(body, userId);
+    }
+
+    @GetMapping("/check-email")
+    public ResponseEntity<Document> checkEmail(@RequestParam String email) {
+        System.out.println("✅ Checking if email exists: " + email);
+        return authService.checkEmailExists(email);
+    }
+    
+    /**
+     * POST /football-pool/v1/api/auth/{userId}/predictions
+     * Save or update a match prediction for a user
+     */
+    @PostMapping("/{userId}/predictions")
+    public ResponseEntity<Document> savePrediction(
+            @PathVariable String userId,
+            @RequestBody Map<String, Object> body) {
+        String groupId = (String) body.get("groupId");
+        String matchId = (String) body.get("matchId");
+        Integer team1Score = body.get("team1Score") != null ? 
+            (body.get("team1Score") instanceof Integer ? (Integer) body.get("team1Score") : 
+             ((Number) body.get("team1Score")).intValue()) : null;
+        Integer team2Score = body.get("team2Score") != null ? 
+            (body.get("team2Score") instanceof Integer ? (Integer) body.get("team2Score") : 
+             ((Number) body.get("team2Score")).intValue()) : null;
+        
+        return authService.savePrediction(userId, groupId, matchId, team1Score, team2Score);
+    }
+    
+    /**
+     * GET /football-pool/v1/api/auth/{userId}/predictions
+     * Get all predictions for a user, optionally filtered by groupId
+     */
+    @GetMapping("/{userId}/predictions")
+    public ResponseEntity<Document> getUserPredictions(
+            @PathVariable String userId,
+            @RequestParam(required = false) String groupId) {
+        return authService.getUserPredictions(userId, groupId);
+    }
+    
+    /**
+     * GET /football-pool/v1/api/auth/{userId}/predictions/{groupId}/{matchId}
+     * Get a specific prediction for a user, group, and match
+     */
+    @GetMapping("/{userId}/predictions/{groupId}/{matchId}")
+    public ResponseEntity<Document> getUserPrediction(
+            @PathVariable String userId,
+            @PathVariable String groupId,
+            @PathVariable String matchId) {
+        return authService.getUserPrediction(userId, groupId, matchId);
+    }
+    
+    /**
+     * PUT /football-pool/v1/api/auth/{userId}/predictions/{groupId}/{matchId}/points
+     * Update prediction points after calculating scores
+     */
+    @PutMapping("/{userId}/predictions/{groupId}/{matchId}/points")
+    public ResponseEntity<Document> updatePredictionPoints(
+            @PathVariable String userId,
+            @PathVariable String groupId,
+            @PathVariable String matchId,
+            @RequestBody Map<String, Object> body) {
+        Integer points = body.get("points") != null ? 
+            (body.get("points") instanceof Integer ? (Integer) body.get("points") : 
+             ((Number) body.get("points")).intValue()) : null;
+        return authService.updatePredictionPoints(userId, groupId, matchId, points);
     }
 }

@@ -1,42 +1,66 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "type": "java",
-            "name": "Current File",
-            "request": "launch",
-            "mainClass": "${file}"
-        },
-        {
-            "type": "java",
-            "name": "ConfigServiceApplication",
-            "request": "launch",
-            "mainClass": "com.leon.ideas.config.config_service.ConfigServiceApplication",
-            "projectName": "config_service"
-        },
-        {
-            "type": "java",
-            "name": "EurekaServiceApplication",
-            "request": "launch",
-            "mainClass": "com.leon.ideas.eureka.eureka_service.EurekaServiceApplication",
-            "projectName": "eureka_service"
-        },
-        {
-            "type": "java",
-            "name": "GatewayServiceApplication",
-            "request": "launch",
-            "mainClass": "com.leon.ideas.gateway.gateway_service.GatewayServiceApplication",
-            "projectName": "gateway_service"
-        },
-        {
-            "type": "java",
-            "name": "AuthServiceApplication",
-            "request": "launch",
-            "mainClass": "com.leon.ideas.auth.AuthServiceApplication",
-            "projectName": "auth_service"
-        },
-    ]
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "PaymentsServiceApplication",
+      "request": "launch",
+      "mainClass": "com.leon.ideas.payments.PaymentsServiceApplication",
+      "projectName": "payments_service"
+    },
+    {
+      "type": "java",
+      "name": "Run Groups Service",
+      "request": "launch",
+      "mainClass": "com.leon.ideas.groups.GroupsServiceApplication",
+      "projectName": "groups_service",
+      "cwd": "${workspaceFolder}/groups_service",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "Run Competitions Service",
+      "request": "launch",
+      "mainClass": "com.leon.ideas.competitions.CompetitionsServiceApplication",
+      "projectName": "competitions_service",
+      "cwd": "${workspaceFolder}/competitions_service",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "Run Auth Service",
+      "request": "launch",
+      "mainClass": "com.leon.ideas.auth.AuthServiceApplication",
+      "projectName": "auth_service",
+      "cwd": "${workspaceFolder}/auth_service",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "Run Gateway Service",
+      "request": "launch",
+      "mainClass": "com.leon.ideas.gateway.gateway_service.GatewayServiceApplication",
+      "projectName": "gateway_service",
+      "cwd": "${workspaceFolder}/gateway_service",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "Run Eureka Service",
+      "request": "launch",
+      "mainClass": "com.leon.ideas.eureka.eureka_service.EurekaServiceApplication",
+      "projectName": "eureka_service",
+      "cwd": "${workspaceFolder}/eureka_service",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "java",
+      "name": "Run Config Service",
+      "request": "launch",
+      "mainClass": "com.leon.ideas.config.config_service.ConfigServiceApplication",
+      "projectName": "config_service",
+      "cwd": "${workspaceFolder}/config_service",
+      "console": "integratedTerminal"
+    }
+  ]
 }

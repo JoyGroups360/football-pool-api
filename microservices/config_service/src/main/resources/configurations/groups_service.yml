@@ -1,0 +1,46 @@
+server:
+  port: 1292
+
+spring:
+  data:
+    mongodb:
+      uri: mongodb://localhost:27017/football-pool-dev
+      database: football-pool-dev
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: joleogon174@gmail.com
+    password: adkn wewa abmc egxw
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+
+jwt:
+  secret: bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODlBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWg==
+  expiration: 86400000
+
+# App and Web URLs for email invitations
+app:
+  download-url: https://your-app-download-url.com  # TODO: Update when app download link is ready
+  # Deep linking URLs for group details
+  deep-link-android-dev: exp://10.0.2.2:8081/--/group-details
+  deep-link-ios-dev: exp://localhost:8081/--/group-details
+  deep-link-production: football-pool://group-details
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    hostname: localhost
+

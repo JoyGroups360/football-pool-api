@@ -14,7 +14,7 @@ public class MongoConfig {
     @Bean
     @Primary
     public MongoTemplate usersMongoTemplate() {
-        MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017/auth_db_dev");
-        return new MongoTemplate(mongoClient, "auth_db_dev");
+        MongoClient mongoClient = MongoClients.create("mongodb://localhost:27017/football-pool-dev");
+        return new MongoTemplate(mongoClient, "football-pool-dev");
     }
 }
