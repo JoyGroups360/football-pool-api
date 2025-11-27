@@ -1,6 +1,5 @@
 package com.leon.ideas.competitions.repository;
 
-import com.mongodb.client.result.DeleteResult;
 import com.mongodb.client.result.UpdateResult;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -22,19 +21,51 @@ public class CompetitionsRepository {
     private MongoTemplate competitionsMongoTemplate;
 
     private static final String COLLECTION_NAME = "competitions";
-    private static final String DOCUMENT_ID = "6913741bb6e91976e74b53d3";
 
     /**
      * Get all competitions (entire document)
+     * This method retrieves the first document from the competitions collection.
+     * Since there should only be one document containing all competitions, we get the first one.
      */
     public Document getAllCompetitions() {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
-            return competitionsMongoTemplate.findById(objectId, Document.class, COLLECTION_NAME);
-        } catch (IllegalArgumentException e) {
-            System.err.println("❌ Error: Invalid ObjectId format for document ID");
+            // Get the first document from the collection (there should only be one)
+            Query query = new Query();
+            query.limit(1);
+            List<Document> documents = competitionsMongoTemplate.find(query, Document.class, COLLECTION_NAME);
+            
+            if (documents != null && !documents.isEmpty()) {
+                return documents.get(0);
+            }
+            
+            System.err.println("⚠️ Warning: No competitions document found in collection");
+            return null;
+        } catch (Exception e) {
+            System.err.println("❌ Error retrieving competitions: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }
+    }
+    
+    /**
+     * Get the ObjectId of the competitions document
+     * This is used by other methods that need to update the document
+     */
+    private ObjectId getCompetitionsDocumentId() {
+        Document doc = getAllCompetitions();
+        if (doc != null && doc.containsKey("_id")) {
+            Object id = doc.get("_id");
+            if (id instanceof ObjectId) {
+                return (ObjectId) id;
+            } else if (id instanceof String) {
+                try {
+                    return new ObjectId((String) id);
+                } catch (IllegalArgumentException e) {
+                    System.err.println("❌ Error: Invalid ObjectId format: " + id);
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -67,7 +98,11 @@ public class CompetitionsRepository {
      */
     public boolean addCompetition(String category, Document competition) {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
             Query query = new Query(Criteria.where("_id").is(objectId));
             Update update = new Update().push(category, competition);
             
@@ -84,7 +119,11 @@ public class CompetitionsRepository {
      */
     public boolean updateCompetition(String category, String competitionId, Document updatedCompetition) {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
             
             // First, get the index of the competition in the array
             List<Document> competitions = getCompetitionsByCategory(category);
@@ -117,7 +156,11 @@ public class CompetitionsRepository {
      */
     public boolean patchCompetition(String category, String competitionId, Map<String, Object> updates) {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
             
             // First, get the index of the competition in the array
             List<Document> competitions = getCompetitionsByCategory(category);
@@ -155,7 +198,11 @@ public class CompetitionsRepository {
      */
     public boolean deleteCompetition(String category, String competitionId) {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
             
             // Get the competition to delete
             Document competitionToDelete = getCompetitionById(category, competitionId);
@@ -217,7 +264,11 @@ public class CompetitionsRepository {
      */
     public boolean addQualifiedTeam(String category, String competitionId, Document team) {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
             
             // Find the competition index
             List<Document> competitions = getCompetitionsByCategory(category);
@@ -261,7 +312,11 @@ public class CompetitionsRepository {
      */
     public boolean updateQualifiedTeam(String category, String competitionId, String teamId, Document updatedTeam) {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
             
             // Find the competition index
             List<Document> competitions = getCompetitionsByCategory(category);
@@ -316,7 +371,11 @@ public class CompetitionsRepository {
      */
     public boolean deleteQualifiedTeam(String category, String competitionId, String teamId) {
         try {
-            ObjectId objectId = new ObjectId(DOCUMENT_ID);
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
             
             // Find the competition index
             List<Document> competitions = getCompetitionsByCategory(category);

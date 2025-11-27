@@ -371,6 +371,32 @@ public class GroupsController {
     }
     
     /**
+     * PATCH /football-pool/v1/api/groups/{groupId}/matches/{matchId}
+     * Update user prediction scores in a match
+     * 
+     * Required fields in body:
+     * - userTeam1Score (Integer) - User's predicted score for team1
+     * - userTeam2Score (Integer) - User's predicted score for team2
+     */
+    @PatchMapping("/{groupId}/matches/{matchId}")
+    public ResponseEntity<Map<String, Object>> updateMatchPrediction(
+            @PathVariable String groupId,
+            @PathVariable String matchId,
+            @RequestBody Map<String, Object> predictionData,
+            HttpServletRequest request) {
+        
+        String userId = (String) request.getAttribute("userId");
+        
+        System.out.println("🎯 PATCH request received: Update match prediction");
+        System.out.println("Group ID: " + groupId);
+        System.out.println("Match ID: " + matchId);
+        System.out.println("User ID: " + userId);
+        System.out.println("Prediction data: " + predictionData);
+        
+        return groupsService.updateMatchPrediction(groupId, matchId, userId, predictionData);
+    }
+    
+    /**
      * POST /football-pool/v1/api/groups/{groupId}/matches/{matchId}/predict
      * Save or update a match prediction for the authenticated user
      *

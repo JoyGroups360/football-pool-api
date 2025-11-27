@@ -400,6 +400,9 @@ public class GroupsService {
                 System.err.println("⚠️ WARNING: Failed to update user groups in auth_service: " + e.getMessage());
             }
             
+            // Normalize group before returning
+            savedGroup = normalizeGroup(savedGroup);
+            
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "message", "Group created successfully",
                 "group", savedGroup,
@@ -427,6 +430,9 @@ public class GroupsService {
 
             Group group = groupOpt.get();
             
+            // Normalize group after reading from MongoDB
+            group = normalizeGroup(group);
+            
             // Check if user has access to this group
             if (!isUserInGroup(group, userId) &&
                 !group.getInvitedEmails().contains(userId)) {
@@ -449,9 +455,15 @@ public class GroupsService {
     public ResponseEntity<Map<String, Object>> getUserGroups(String userId) {
         try {
             List<Group> groups = groupsRepository.findGroupsByUserIdAsCreatorOrMember(userId);
+            // Normalize all groups after reading from MongoDB
+            if (groups != null) {
+                groups = groups.stream()
+                    .map(this::normalizeGroup)
+                    .toList();
+            }
             return ResponseEntity.ok(Map.of(
                 "groups", groups,
-                "count", groups.size()
+                "count", groups != null ? groups.size() : 0
             ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
@@ -1164,274 +1176,28 @@ public class GroupsService {
     /**
      * Register or update match result
      * This will automatically update team statistics
+     * NOTE: This endpoint is NOT available for frontend use.
+     * Results must be registered by backend/admin only.
      */
     public ResponseEntity<Map<String, Object>> registerMatchResult(String groupId, String matchId, String userId, Map<String, Object> resultData) {
-        try {
-            Optional<Group> groupOpt = groupsRepository.findById(groupId);
-            if (groupOpt.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "error", "Group not found"
-                ));
-            }
-
-            Group group = groupOpt.get();
-            
-            // Only creator can register results (or you can allow all members - adjust as needed)
-            if (!group.getCreatorUserId().equals(userId)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                    "error", "Only the group creator can register match results"
-                ));
-            }
-
-            Integer team1Score = (Integer) resultData.get("team1Score");
-            Integer team2Score = (Integer) resultData.get("team2Score");
-            
-            if (team1Score == null || team2Score == null) {
-                return ResponseEntity.badRequest().body(Map.of(
-                    "error", "team1Score and team2Score are required"
-                ));
-            }
-
-            // Find the match
-            Group.TournamentStructure.Match match = null;
-            Group.TournamentStructure.Stage matchStage = null;
-            Group.TournamentStructure.GroupStage matchGroup = null;
-            
-            if (group.getTournamentStructure() != null && group.getTournamentStructure().getStages() != null) {
-                for (Group.TournamentStructure.Stage stage : group.getTournamentStructure().getStages().values()) {
-                    // Search in group stage
-                    if (stage.getGroups() != null) {
-                        for (Group.TournamentStructure.GroupStage groupStage : stage.getGroups()) {
-                            if (groupStage.getMatches() != null) {
-                                for (Group.TournamentStructure.Match m : groupStage.getMatches()) {
-                                    if (m.getMatchId().equals(matchId)) {
-                                        match = m;
-                                        matchStage = stage;
-                                        matchGroup = groupStage;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (match != null) break;
-                        }
-                    }
-                    
-                    // Search in knockout matches
-                    if (stage.getMatches() != null) {
-                        for (Group.TournamentStructure.Match m : stage.getMatches()) {
-                            if (m.getMatchId().equals(matchId)) {
-                                match = m;
-                                matchStage = stage;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (match != null) break;
-                }
-            }
-
-            if (match == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "error", "Match not found"
-                ));
-            }
-
-            // Update match result
-            match.setTeam1Score(team1Score);
-            match.setTeam2Score(team2Score);
-            match.setIsPlayed(true);
-            match.setStatus("finished");
-            
-            // Determine winner/loser
-            if (team1Score > team2Score) {
-                match.setWinnerTeamId(match.getTeam1Id());
-                match.setLoserTeamId(match.getTeam2Id());
-                match.setIsDraw(false);
-            } else if (team2Score > team1Score) {
-                match.setWinnerTeamId(match.getTeam2Id());
-                match.setLoserTeamId(match.getTeam1Id());
-                match.setIsDraw(false);
-            } else {
-                match.setIsDraw(true);
-                match.setWinnerTeamId(null);
-                match.setLoserTeamId(null);
-            }
-
-            // Set played date
-            if (resultData.containsKey("playedDate")) {
-                Object playedDateObj = resultData.get("playedDate");
-                if (playedDateObj instanceof Date) {
-                    match.setPlayedDate((Date) playedDateObj);
-                } else if (playedDateObj instanceof String) {
-                    // Parse string date if needed
-                    match.setPlayedDate(new Date());
-                } else {
-                    match.setPlayedDate(new Date());
-                }
-            } else {
-                match.setPlayedDate(new Date());
-            }
-
-            if (resultData.containsKey("venue")) {
-                match.setVenue((String) resultData.get("venue"));
-            }
-
-            // Update team statistics if it's a group stage match
-            if (matchGroup != null && matchGroup.getTeams() != null) {
-                updateTeamStats(matchGroup.getTeams(), match.getTeam1Id(), match.getTeam2Id(), team1Score, team2Score);
-                
-                // Recalculate positions
-                recalculateGroupPositions(matchGroup.getTeams());
-                
-                // Update qualified teams
-                updateQualifiedTeams(matchGroup);
-            }
-
-            // For knockout matches, update qualified teams for next stage
-            if (matchStage != null && matchStage.getType().equals("knockout") && !match.getIsDraw() && match.getWinnerTeamId() != null) {
-                if (match.getNextMatchId() != null) {
-                    // Find next match and set the winner as one of the teams
-                    updateNextMatchWithWinner(group, match.getNextMatchId(), match.getNextStageId(), match.getWinnerTeamId());
-                }
-                
-                // Add winner to qualified teams if stage is complete
-                if (matchStage.getQualifiedTeamIds() == null) {
-                    matchStage.setQualifiedTeamIds(new ArrayList<>());
-                }
-                if (!matchStage.getQualifiedTeamIds().contains(match.getWinnerTeamId())) {
-                    matchStage.getQualifiedTeamIds().add(match.getWinnerTeamId());
-                }
-            }
-
-            // Save group
-            group.setUpdatedAt(new Date());
-            Group savedGroup = groupsRepository.save(group);
-
-            return ResponseEntity.ok(Map.of(
-                "message", "Match result registered successfully",
-                "match", match,
-                "groupId", groupId
-            ));
-        } catch (Exception e) {
-            System.err.println("❌ Error registering match result: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "error", "Error registering match result: " + e.getMessage()
-            ));
-        }
+        // Frontend cannot register real match results
+        // Results must be registered by backend/admin only
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+            "error", "Frontend cannot register match results. Results must be registered by backend/admin only."
+        ));
     }
 
     /**
      * Clear match result (reset to not played)
+     * NOTE: This endpoint is NOT available for frontend use.
+     * Results must be cleared by backend/admin only.
      */
     public ResponseEntity<Map<String, Object>> clearMatchResult(String groupId, String matchId, String userId) {
-        try {
-            Optional<Group> groupOpt = groupsRepository.findById(groupId);
-            if (groupOpt.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "error", "Group not found"
-                ));
-            }
-
-            Group group = groupOpt.get();
-            
-            if (!group.getCreatorUserId().equals(userId)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
-                    "error", "Only the group creator can clear match results"
-                ));
-            }
-
-            // Find the match
-            Group.TournamentStructure.Match match = null;
-            Group.TournamentStructure.Stage matchStage = null;
-            Group.TournamentStructure.GroupStage matchGroup = null;
-            
-            if (group.getTournamentStructure() != null && group.getTournamentStructure().getStages() != null) {
-                for (Group.TournamentStructure.Stage stage : group.getTournamentStructure().getStages().values()) {
-                    if (stage.getGroups() != null) {
-                        for (Group.TournamentStructure.GroupStage groupStage : stage.getGroups()) {
-                            if (groupStage.getMatches() != null) {
-                                for (Group.TournamentStructure.Match m : groupStage.getMatches()) {
-                                    if (m.getMatchId().equals(matchId)) {
-                                        match = m;
-                                        matchStage = stage;
-                                        matchGroup = groupStage;
-                                        break;
-                                    }
-                                }
-                            }
-                            if (match != null) break;
-                        }
-                    }
-                    
-                    if (stage.getMatches() != null) {
-                        for (Group.TournamentStructure.Match m : stage.getMatches()) {
-                            if (m.getMatchId().equals(matchId)) {
-                                match = m;
-                                matchStage = stage;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (match != null) break;
-                }
-            }
-
-            if (match == null) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "error", "Match not found"
-                ));
-            }
-
-            // Store old result for reverting stats
-            Integer oldTeam1Score = match.getTeam1Score();
-            Integer oldTeam2Score = match.getTeam2Score();
-            String oldWinnerId = match.getWinnerTeamId();
-
-            // Clear match result
-            match.setTeam1Score(null);
-            match.setTeam2Score(null);
-            match.setIsPlayed(false);
-            match.setStatus("scheduled");
-            match.setWinnerTeamId(null);
-            match.setLoserTeamId(null);
-            match.setIsDraw(null);
-            match.setPlayedDate(null);
-
-            // Revert team statistics if it was a group stage match
-            if (matchGroup != null && matchGroup.getTeams() != null && oldTeam1Score != null && oldTeam2Score != null) {
-                revertTeamStats(matchGroup.getTeams(), match.getTeam1Id(), match.getTeam2Id(), oldTeam1Score, oldTeam2Score);
-                recalculateGroupPositions(matchGroup.getTeams());
-                updateQualifiedTeams(matchGroup);
-            }
-
-            // For knockout matches, remove winner from next match if already set
-            if (matchStage != null && matchStage.getType().equals("knockout") && oldWinnerId != null && match.getNextMatchId() != null) {
-                removeWinnerFromNextMatch(group, match.getNextMatchId(), match.getNextStageId(), oldWinnerId);
-                
-                if (matchStage.getQualifiedTeamIds() != null) {
-                    matchStage.getQualifiedTeamIds().remove(oldWinnerId);
-                }
-            }
-
-            // Save group
-            group.setUpdatedAt(new Date());
-            groupsRepository.save(group);
-
-            return ResponseEntity.ok(Map.of(
-                "message", "Match result cleared successfully",
-                "groupId", groupId,
-                "match", match
-            ));
-        } catch (Exception e) {
-            System.err.println("❌ Error clearing match result: " + e.getMessage());
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                "error", "Error clearing match result: " + e.getMessage()
-            ));
-        }
+        // Frontend cannot clear real match results
+        // Results must be cleared by backend/admin only
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+            "error", "Frontend cannot clear match results. Results must be managed by backend/admin only."
+        ));
     }
 
     private void revertTeamStats(List<Group.TeamScore> teams, String team1Id, String team2Id, Integer team1Score, Integer team2Score) {
@@ -1848,6 +1614,79 @@ public class GroupsService {
                     }
                 }
             }
+        }
+    }
+    
+    /**
+     * Update user prediction scores directly in the match
+     */
+    public ResponseEntity<Map<String, Object>> updateMatchPrediction(String groupId, String matchId, String userId, Map<String, Object> predictionData) {
+        try {
+            Optional<Group> groupOpt = groupsRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Group not found"
+                ));
+            }
+            
+            Group group = groupOpt.get();
+            
+            // Verify user has access to this group
+            if (!isUserInGroup(group, userId)) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "error", "You don't have access to this group"
+                ));
+            }
+            
+            // Verify match exists
+            Group.TournamentStructure.Match match = findMatchInGroup(group, matchId);
+            if (match == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Match not found"
+                ));
+            }
+            
+            // Check if match is already played (can't predict after match is played)
+            if (match.getIsPlayed() != null && match.getIsPlayed()) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "error", "Cannot predict on a match that has already been played"
+                ));
+            }
+            
+            // Get prediction scores from request
+            Integer userTeam1Score = predictionData.get("userTeam1Score") != null ? 
+                ((Number) predictionData.get("userTeam1Score")).intValue() : null;
+            Integer userTeam2Score = predictionData.get("userTeam2Score") != null ? 
+                ((Number) predictionData.get("userTeam2Score")).intValue() : null;
+            
+            // Validate that at least one score is provided
+            if (userTeam1Score == null && userTeam2Score == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "At least one of userTeam1Score or userTeam2Score must be provided"
+                ));
+            }
+            
+            // Update prediction scores in the match
+            if (userTeam1Score != null) {
+                match.setUserTeam1Score(userTeam1Score);
+            }
+            if (userTeam2Score != null) {
+                match.setUserTeam2Score(userTeam2Score);
+            }
+            
+            // Save the group
+            groupsRepository.save(group);
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Match prediction updated successfully",
+                "match", match
+            ));
+        } catch (Exception e) {
+            System.err.println("❌ Error updating match prediction: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Error updating match prediction: " + e.getMessage()
+            ));
         }
     }
     
@@ -2308,6 +2147,95 @@ public class GroupsService {
         newUser.setNombre(userName);
         newUser.setScore(0);
         group.getUsers().add(newUser);
+    }
+
+    /**
+     * Normalize GroupUser objects: convert _id to id if present
+     * This handles MongoDB documents that were saved with _id instead of id
+     */
+    private void normalizeGroupUsers(Group group) {
+        if (group == null || group.getUsers() == null) {
+            return;
+        }
+        
+        for (Group.GroupUser user : group.getUsers()) {
+            // If id is null but we have _id in the document, we need to handle it
+            // This is a workaround for MongoDB documents that have _id instead of id
+            // The @JsonAlias should handle this during JSON deserialization,
+            // but we also need to ensure the object is properly initialized
+            if (user.getId() == null || user.getId().isEmpty()) {
+                // This shouldn't happen if MongoDB mapping is correct
+                // But we handle it just in case
+                System.err.println("⚠️ WARNING: GroupUser has null or empty id");
+            }
+        }
+    }
+
+    /**
+     * Normalize Match objects: convert matchday from Date to Integer if needed
+     * Some MongoDB documents have matchday as Date instead of Integer
+     */
+    private void normalizeMatches(Group group) {
+        if (group == null || group.getTournamentStructure() == null || 
+            group.getTournamentStructure().getStages() == null) {
+            return;
+        }
+        
+        for (Group.TournamentStructure.Stage stage : group.getTournamentStructure().getStages().values()) {
+            if (stage == null) {
+                continue;
+            }
+            
+            // Normalize matches in group stage
+            if (stage.getGroups() != null) {
+                for (Group.TournamentStructure.GroupStage groupStage : stage.getGroups()) {
+                    if (groupStage != null && groupStage.getMatches() != null) {
+                        for (Group.TournamentStructure.Match match : groupStage.getMatches()) {
+                            normalizeMatch(match);
+                        }
+                    }
+                }
+            }
+            
+            // Normalize matches in knockout stages
+            if (stage.getMatches() != null) {
+                for (Group.TournamentStructure.Match match : stage.getMatches()) {
+                    normalizeMatch(match);
+                }
+            }
+        }
+    }
+
+    /**
+     * Normalize a single match: convert matchday from Date to Integer if needed
+     * The getMatchday() method already handles this, but we call it here to ensure
+     * the value is properly converted and stored
+     */
+    private void normalizeMatch(Group.TournamentStructure.Match match) {
+        if (match == null) {
+            return;
+        }
+        
+        // Get the matchday value (this will convert Date to Integer if needed)
+        Integer matchday = match.getMatchday();
+        // Set it back to ensure it's stored as Integer
+        if (matchday != null) {
+            match.setMatchday(matchday);
+        }
+    }
+
+    /**
+     * Normalize a group after reading from MongoDB
+     * Ensures all fields are properly mapped
+     */
+    private Group normalizeGroup(Group group) {
+        if (group == null) {
+            return null;
+        }
+        
+        normalizeGroupUsers(group);
+        normalizeMatches(group);
+        return group;
     }
 }
 

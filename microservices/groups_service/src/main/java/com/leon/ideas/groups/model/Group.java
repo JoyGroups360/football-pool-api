@@ -1,8 +1,10 @@
 package com.leon.ideas.groups.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
 
 import java.util.Date;
 import java.util.List;
@@ -46,6 +48,8 @@ public class Group {
      */
     @Data
     public static class GroupUser {
+        @Field("_id") // MongoDB stores as _id, map it to id field
+        @com.fasterxml.jackson.annotation.JsonProperty("id") // Always serialize as "id" in JSON (not _id)
         private String id; // User ID
         private String nombre; // User name
         private Integer score; // User score in the group
@@ -166,12 +170,16 @@ public class Group {
             private String team2Name;
             private String team2Flag;
             
-            // Match result
+            // Match result (real scores - only backend/admin can modify)
             private Integer team1Score; // null if not played yet
             private Integer team2Score; // null if not played yet
             private String winnerTeamId; // null if not played yet (or if draw)
             private String loserTeamId; // null if not played yet (or if draw)
             private Boolean isDraw; // true if match ended in a draw
+            
+            // User prediction scores (frontend can modify these)
+            private Integer userTeam1Score; // User's predicted score for team1 (null if not predicted yet)
+            private Integer userTeam2Score; // User's predicted score for team2 (null if not predicted yet)
             
             // Match metadata
             private Date matchDate; // When the match is scheduled
@@ -185,7 +193,45 @@ public class Group {
             private String nextStageId; // Which stage does the winner advance to?
             
             // For group stage matches
-            private Integer matchday; // Matchday number (1, 2, 3, etc.) within the group
+            // Use Object type to handle both Integer and Date from MongoDB
+            @Field("matchday")
+            @com.fasterxml.jackson.annotation.JsonIgnore
+            private Object matchdayInternal; // Internal field that can be Integer or Date
+            
+            // Public getter that always returns Integer (or null)
+            @com.fasterxml.jackson.annotation.JsonProperty("matchday")
+            public Integer getMatchday() {
+                if (matchdayInternal == null) {
+                    return null;
+                }
+                if (matchdayInternal instanceof Integer) {
+                    return (Integer) matchdayInternal;
+                }
+                if (matchdayInternal instanceof Date) {
+                    // If it's a Date, log warning and return null
+                    // This shouldn't happen, but some old documents might have this
+                    System.err.println("⚠️ WARNING: matchday is a Date, expected Integer. Returning null.");
+                    return null;
+                }
+                if (matchdayInternal instanceof Number) {
+                    return ((Number) matchdayInternal).intValue();
+                }
+                // Try to parse as string
+                if (matchdayInternal instanceof String) {
+                    try {
+                        return Integer.parseInt((String) matchdayInternal);
+                    } catch (NumberFormatException e) {
+                        System.err.println("⚠️ WARNING: Cannot parse matchday as Integer: " + matchdayInternal);
+                        return null;
+                    }
+                }
+                return null;
+            }
+            
+            // Public setter that accepts Integer
+            public void setMatchday(Integer matchday) {
+                this.matchdayInternal = matchday;
+            }
         }
     }
     

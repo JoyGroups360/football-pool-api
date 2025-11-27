@@ -23,6 +23,8 @@ public class CompetitionsService {
         try {
             Document competitions = competitionsRepository.getAllCompetitions();
             if (competitions != null) {
+                // Process club competitions to add 'image' field to teams
+                processClubTeamsImages(competitions);
                 return new ResponseEntity<>(competitions, HttpStatus.OK);
             } else {
                 return new ResponseEntity<>(
@@ -39,8 +41,56 @@ public class CompetitionsService {
     }
 
     /**
+     * Process club competitions to add 'image' field to teams from 'flag' field
+     * This ensures club teams have an 'image' field for their logos
+     */
+    @SuppressWarnings("unchecked")
+    private void processClubTeamsImages(Document competitions) {
+        // Process fifaOfficialClubCups
+        if (competitions.containsKey("fifaOfficialClubCups")) {
+            List<Document> clubCups = (List<Document>) competitions.get("fifaOfficialClubCups");
+            if (clubCups != null) {
+                for (Document competition : clubCups) {
+                    if (competition.containsKey("qualifiedTeams")) {
+                        List<Document> teams = (List<Document>) competition.get("qualifiedTeams");
+                        if (teams != null) {
+                            for (Document team : teams) {
+                                // If team has 'flag' but no 'image', copy flag to image for club teams
+                                if (team.containsKey("flag") && !team.containsKey("image")) {
+                                    team.put("image", team.get("flag"));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Process nationalClubLeagues (these are also club competitions)
+        if (competitions.containsKey("nationalClubLeagues")) {
+            List<Document> leagues = (List<Document>) competitions.get("nationalClubLeagues");
+            if (leagues != null) {
+                for (Document league : leagues) {
+                    if (league.containsKey("qualifiedTeams")) {
+                        List<Document> teams = (List<Document>) league.get("qualifiedTeams");
+                        if (teams != null) {
+                            for (Document team : teams) {
+                                // If team has 'flag' but no 'image', copy flag to image for club teams
+                                if (team.containsKey("flag") && !team.containsKey("image")) {
+                                    team.put("image", team.get("flag"));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Get competitions by category
      */
+    @SuppressWarnings("unchecked")
     public ResponseEntity<?> getCompetitionsByCategory(String category) {
         try {
             // Validate category
@@ -52,6 +102,26 @@ public class CompetitionsService {
             }
 
             List<Document> competitions = competitionsRepository.getCompetitionsByCategory(category);
+            
+            // Process club competitions to add 'image' field to teams
+            if ("fifaOfficialClubCups".equals(category) || "nationalClubLeagues".equals(category)) {
+                if (competitions != null) {
+                    for (Document competition : competitions) {
+                        if (competition.containsKey("qualifiedTeams")) {
+                            List<Document> teams = (List<Document>) competition.get("qualifiedTeams");
+                            if (teams != null) {
+                                for (Document team : teams) {
+                                    // If team has 'flag' but no 'image', copy flag to image for club teams
+                                    if (team.containsKey("flag") && !team.containsKey("image")) {
+                                        team.put("image", team.get("flag"));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
             return new ResponseEntity<>(competitions, HttpStatus.OK);
         } catch (Exception e) {
             return new ResponseEntity<>(
@@ -76,6 +146,19 @@ public class CompetitionsService {
 
             Document competition = competitionsRepository.getCompetitionById(category, competitionId);
             if (competition != null) {
+                // For club competitions, add 'image' field to teams from 'flag' field
+                if ("fifaOfficialClubCups".equals(category) && competition.containsKey("qualifiedTeams")) {
+                    @SuppressWarnings("unchecked")
+                    List<Document> teams = (List<Document>) competition.get("qualifiedTeams");
+                    if (teams != null) {
+                        for (Document team : teams) {
+                            // If team has 'flag' but no 'image', copy flag to image for club teams
+                            if (team.containsKey("flag") && !team.containsKey("image")) {
+                                team.put("image", team.get("flag"));
+                            }
+                        }
+                    }
+                }
                 return new ResponseEntity<>(competition, HttpStatus.OK);
             } else {
                 return new ResponseEntity<>(
@@ -397,6 +480,16 @@ public class CompetitionsService {
 
             List<Document> teams = competitionsRepository.getQualifiedTeams(category, competitionId);
             if (teams != null) {
+                // For club competitions, add 'image' field from 'flag' field
+                // This allows frontend to use 'image' for club logos and 'flag' for national team flags
+                if ("fifaOfficialClubCups".equals(category)) {
+                    for (Document team : teams) {
+                        // If team has 'flag' but no 'image', copy flag to image for club teams
+                        if (team.containsKey("flag") && !team.containsKey("image")) {
+                            team.put("image", team.get("flag"));
+                        }
+                    }
+                }
                 return new ResponseEntity<>(teams, HttpStatus.OK);
             } else {
                 return new ResponseEntity<>(

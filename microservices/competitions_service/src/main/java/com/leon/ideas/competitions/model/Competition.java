@@ -23,7 +23,8 @@ public class Competition {
         private String id;
         private String name;
         private String country;
-        private String flag;
+        private String flag; // For national teams (country flags)
+        private String image; // For club teams (club logos/badges)
         private String group;
         private Integer seed;
     }

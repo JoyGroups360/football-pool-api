@@ -1,5 +1,6 @@
 com/leon/ideas/competitions/model/Competition.class
 com/leon/ideas/competitions/controller/CompetitionsController.class
+com/leon/ideas/competitions/model/Competition$QualifiedTeam.class
 com/leon/ideas/competitions/configs/CorsConfig.class
 com/leon/ideas/competitions/security/JwtAuthenticationFilter.class
 com/leon/ideas/competitions/service/JwtService.class
