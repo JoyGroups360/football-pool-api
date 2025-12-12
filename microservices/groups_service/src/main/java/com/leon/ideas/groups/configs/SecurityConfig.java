@@ -55,6 +55,9 @@ public class SecurityConfig {
                         // Public endpoint used internally by auth_service to resolve invites
                         .requestMatchers(HttpMethod.GET, "/football-pool/v1/api/groups/by-invited-email").permitAll()
 
+                        // Internal endpoints (use X-Service-Token, not JWT)
+                        .requestMatchers("/football-pool/v1/api/groups/internal/**").permitAll()
+
                         // All other groups endpoints require authentication
                         .requestMatchers("/football-pool/v1/api/groups/**").authenticated()
 

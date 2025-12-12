@@ -725,7 +725,7 @@ public class GroupsController {
                       (userScoreObj instanceof Number ? ((Number) userScoreObj).intValue() : 0)) : 0;
         
         System.out.println("═══════════════════════════════════════════════════════");
-        System.out.println("📊 POST request received (internal): Update matchesDetail for multiple groups");
+        System.out.println("📊 POST /internal/update-matches-detail-multiple - REQUEST RECEIVED");
         System.out.println("═══════════════════════════════════════════════════════");
         System.out.println("Group IDs count: " + (groupIds != null ? groupIds.size() : 0));
         System.out.println("Group IDs: " + groupIds);
@@ -735,14 +735,23 @@ public class GroupsController {
         System.out.println("User Score: " + userScore);
         if (matchesDetail != null && !matchesDetail.isEmpty()) {
             System.out.println("First match in matchesDetail: " + matchesDetail.get(0));
+            System.out.println("Keys in first match: " + matchesDetail.get(0).keySet());
+        } else {
+            System.err.println("⚠️ WARNING: matchesDetail is NULL or EMPTY!");
         }
         
         // Validate service token (for internal calls)
+        System.out.println("🔐 Validating service token in controller...");
+        System.out.println("   serviceToken received: " + (serviceToken != null ? "PRESENT (length: " + serviceToken.length() + ")" : "NULL"));
+        
         if (serviceToken == null || serviceToken.trim().isEmpty()) {
+            System.err.println("❌ Service token is NULL or EMPTY!");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
                 "error", "Service token is required"
             ));
         }
+        
+        System.out.println("✅ Service token is present in controller, passing to service");
         
         // Validate required fields
         if (groupIds == null || groupIds.isEmpty()) {

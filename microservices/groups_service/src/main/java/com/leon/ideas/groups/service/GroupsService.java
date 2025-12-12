@@ -3146,13 +3146,27 @@ public class GroupsService {
             System.out.println("serviceToken present: " + (serviceTokenHeader != null && !serviceTokenHeader.trim().isEmpty()));
             
             // Validate service token
-            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty() || 
-                !serviceTokenHeader.equals(this.serviceToken)) {
-                System.err.println("❌ Invalid service token!");
+            System.out.println("🔐 Validating service token in service...");
+            System.out.println("   serviceTokenHeader: " + (serviceTokenHeader != null ? "PRESENT (length: " + serviceTokenHeader.length() + ")" : "NULL"));
+            System.out.println("   this.serviceToken: " + (this.serviceToken != null ? "PRESENT (length: " + this.serviceToken.length() + ")" : "NULL"));
+            
+            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty()) {
+                System.err.println("❌ Service token header is NULL or EMPTY!");
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
                     "error", "Invalid or missing service token"
                 ));
             }
+            
+            if (!serviceTokenHeader.equals(this.serviceToken)) {
+                System.err.println("❌ Service tokens DO NOT MATCH!");
+                System.err.println("   Received: " + serviceTokenHeader);
+                System.err.println("   Expected: " + this.serviceToken);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Invalid service token"
+                ));
+            }
+            
+            System.out.println("✅ Service token validated successfully");
             
             // Validate required fields
             if (groupIds == null || groupIds.isEmpty()) {
@@ -3330,8 +3344,26 @@ public class GroupsService {
                         }
                     }
                     
+                    // Force save and verify
+                    System.out.println("💾 Calling groupsRepository.save()...");
                     Group savedGroup = groupsRepository.save(group);
                     System.out.println("✅ Group saved successfully. Group ID: " + groupId);
+                    
+                    // Verify the saved data
+                    Optional<Group> refreshedGroupOpt = groupsRepository.findById(groupId);
+                    if (refreshedGroupOpt.isPresent()) {
+                        Group refreshedGroup = refreshedGroupOpt.get();
+                        System.out.println("🔄 Refreshed group from database");
+                        if (refreshedGroup.getUsers() != null) {
+                            for (Group.GroupUser refreshedUser : refreshedGroup.getUsers()) {
+                                if ((refreshedUser.getId() != null && refreshedUser.getId().equals(userId)) || 
+                                    (refreshedUser.getUserId() != null && refreshedUser.getUserId().equals(userId))) {
+                                    System.out.println("   🔍 Refreshed user - score: " + refreshedUser.getScore() + ", matchesInfo size: " + (refreshedUser.getMatchesInfo() != null ? refreshedUser.getMatchesInfo().size() : 0));
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     
                     // Verify the user was updated correctly AFTER saving
                     if (savedGroup.getUsers() != null) {

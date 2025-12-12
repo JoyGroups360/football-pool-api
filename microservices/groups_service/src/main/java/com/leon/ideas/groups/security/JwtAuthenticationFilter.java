@@ -26,9 +26,19 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         
         final String authHeader = request.getHeader("Authorization");
         final String requestPath = request.getRequestURI();
+        final String method = request.getMethod();
         
-        System.out.println("🔐 JWT Filter - Processing request: " + requestPath);
+        System.out.println("🔐 JWT Filter - Processing request: " + method + " " + requestPath);
         System.out.println("🔐 JWT Filter - Authorization header present: " + (authHeader != null));
+        
+        // Log X-Service-Token for internal endpoints
+        if (requestPath.contains("/internal/")) {
+            final String serviceToken = request.getHeader("X-Service-Token");
+            System.out.println("🔐 JWT Filter - X-Service-Token header present: " + (serviceToken != null));
+            if (serviceToken != null) {
+                System.out.println("🔐 JWT Filter - X-Service-Token length: " + serviceToken.length());
+            }
+        }
         
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             System.out.println("⚠️ JWT Filter - No Authorization header or invalid format");

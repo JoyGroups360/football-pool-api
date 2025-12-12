@@ -232,6 +232,11 @@ public class AuthController {
             @RequestBody Map<String, Object> body,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         
+        System.out.println("═══════════════════════════════════════════════════════");
+        System.out.println("🎯 POST /predictions - REQUEST RECEIVED");
+        System.out.println("═══════════════════════════════════════════════════════");
+        System.out.println("Request body keys: " + body.keySet());
+        
         // Try to get userId from JWT token first (more secure)
         String userId = null;
         if (authHeader != null && authHeader.startsWith("Bearer ")) {

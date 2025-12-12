@@ -19,6 +19,12 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
     public void commence(HttpServletRequest request, HttpServletResponse response,
                          AuthenticationException authException) throws IOException, ServletException {
         
+        final String requestPath = request.getRequestURI();
+        final String method = request.getMethod();
+        System.err.println("🚫 JwtAuthenticationEntryPoint - Rejecting request: " + method + " " + requestPath);
+        System.err.println("   Exception: " + (authException != null ? authException.getMessage() : "null"));
+        System.err.println("   X-Service-Token header: " + (request.getHeader("X-Service-Token") != null ? "PRESENT" : "MISSING"));
+        
         response.setContentType("application/json");
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         

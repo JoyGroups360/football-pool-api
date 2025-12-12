@@ -507,8 +507,14 @@ public class GroupsClientService {
             System.out.println("   userScore: " + userScore);
             
             HttpHeaders headers = new HttpHeaders();
+            System.out.println("   🔐 Setting X-Service-Token header");
+            System.out.println("   serviceToken: " + (serviceToken != null ? "PRESENT (length: " + serviceToken.length() + ", starts with: " + (serviceToken.length() > 5 ? serviceToken.substring(0, 5) + "..." : serviceToken) + ")" : "NULL"));
+            if (serviceToken == null || serviceToken.trim().isEmpty()) {
+                System.err.println("   ❌ ERROR: serviceToken is NULL or EMPTY!");
+            }
             headers.set("X-Service-Token", serviceToken);
             headers.setContentType(MediaType.APPLICATION_JSON);
+            System.out.println("   ✅ Headers configured");
             
             Map<String, Object> body = new java.util.HashMap<>();
             body.put("groupIds", groupIds);
@@ -540,38 +546,46 @@ public class GroupsClientService {
                 throw e; // Re-throw to be caught by AuthService
             }
             
+            System.out.println("   Response received - Status: " + response.getStatusCode());
+            System.out.println("   Response body: " + response.getBody());
+            
             boolean success = response.getStatusCode().is2xxSuccessful();
             if (success) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> responseBody = response.getBody();
                 if (responseBody != null) {
+                    System.out.println("   Response body keys: " + responseBody.keySet());
                     Object successCountObj = responseBody.get("successCount");
                     Object errorCountObj = responseBody.get("errorCount");
                     int successCount = successCountObj != null ? ((Number) successCountObj).intValue() : 0;
                     int errorCount = errorCountObj != null ? ((Number) errorCountObj).intValue() : 0;
-                    System.out.println("✅ Successfully updated " + successCount + " groups with matchesDetail");
+                    System.out.println("   ✅ Successfully updated " + successCount + " groups with matchesDetail");
                     if (errorCount > 0) {
-                        System.err.println("⚠️ " + errorCount + " groups failed to update");
+                        System.err.println("   ⚠️ " + errorCount + " groups failed to update");
                         @SuppressWarnings("unchecked")
                         List<Map<String, Object>> results = (List<Map<String, Object>>) responseBody.get("results");
                         if (results != null) {
                             for (Map<String, Object> result : results) {
                                 if ("error".equals(result.get("status"))) {
-                                    System.err.println("   ❌ Group " + result.get("groupId") + ": " + result.get("message"));
+                                    System.err.println("      ❌ Group " + result.get("groupId") + ": " + result.get("message"));
                                 }
                             }
                         }
                     }
                     // Return true if at least one group was updated successfully
-                    return successCount > 0;
+                    boolean result = successCount > 0;
+                    System.out.println("   Returning: " + result);
+                    return result;
                 } else {
-                    System.err.println("❌ Response body is null");
+                    System.err.println("   ❌ Response body is null");
                     return false;
                 }
             } else {
-                System.err.println("❌ Failed to update groups. Status: " + response.getStatusCode());
+                System.err.println("   ❌ Failed to update groups. Status: " + response.getStatusCode());
                 if (response.getBody() != null) {
                     System.err.println("   Response body: " + response.getBody());
+                } else {
+                    System.err.println("   Response body is null");
                 }
                 return false;
             }
