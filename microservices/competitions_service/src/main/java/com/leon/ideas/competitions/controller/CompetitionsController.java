@@ -186,6 +186,48 @@ public class CompetitionsController {
         System.out.println("🗑️ DELETE request received: Delete team - Category: " + category + ", Competition ID: " + competitionId + ", Team ID: " + teamId);
         return competitionsService.deleteQualifiedTeam(category, competitionId, teamId);
     }
+
+    // ==================== TOURNAMENT STRUCTURE & MATCH RESULTS ENDPOINTS ====================
+
+    /**
+     * GET /football-pool/v1/api/competitions/{category}/{competitionId}/tournament-structure
+     * Get tournament structure with all matches and REAL results
+     */
+    @GetMapping("/{category}/{competitionId}/tournament-structure")
+    public ResponseEntity<?> getTournamentStructure(
+            @PathVariable String category,
+            @PathVariable String competitionId) {
+        System.out.println("🏆 GET request received: Get tournament structure - Category: " + category + ", Competition ID: " + competitionId);
+        return competitionsService.getTournamentStructure(category, competitionId);
+    }
+
+    /**
+     * GET /football-pool/v1/api/competitions/{category}/{competitionId}/matches/{matchId}
+     * Get a specific match with REAL results (internal endpoint for other services)
+     */
+    @GetMapping("/{category}/{competitionId}/matches/{matchId}")
+    public ResponseEntity<?> getMatch(
+            @PathVariable String category,
+            @PathVariable String competitionId,
+            @PathVariable String matchId,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        System.out.println("⚽ GET request received: Get match - Category: " + category + ", Competition ID: " + competitionId + ", Match ID: " + matchId);
+        return competitionsService.getMatch(category, competitionId, matchId, serviceToken);
+    }
+
+    /**
+     * PATCH /football-pool/v1/api/competitions/{category}/{competitionId}/matches/{matchId}/results
+     * Update REAL match results (only backend/admin can modify)
+     */
+    @PatchMapping("/{category}/{competitionId}/matches/{matchId}/results")
+    public ResponseEntity<?> updateMatchResults(
+            @PathVariable String category,
+            @PathVariable String competitionId,
+            @PathVariable String matchId,
+            @RequestBody Map<String, Object> results) {
+        System.out.println("📝 PATCH request received: Update match results - Category: " + category + ", Competition ID: " + competitionId + ", Match ID: " + matchId);
+        return competitionsService.updateMatchResults(category, competitionId, matchId, results);
+    }
 }
 
 

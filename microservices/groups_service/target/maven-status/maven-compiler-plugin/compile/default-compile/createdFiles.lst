@@ -2,8 +2,8 @@ com/leon/ideas/groups/configs/RestTemplateConfig.class
 com/leon/ideas/groups/configs/MailConfig.class
 com/leon/ideas/groups/model/Group$TournamentStructure.class
 com/leon/ideas/groups/service/GroupsService.class
-com/leon/ideas/groups/model/Group$Scoreboard$TeamScore.class
 com/leon/ideas/groups/security/JwtAuthenticationFilter.class
+com/leon/ideas/groups/model/Group$UserPrediction.class
 com/leon/ideas/groups/model/Group$TournamentStructure$GroupStage.class
 com/leon/ideas/groups/model/Group$GroupUser.class
 com/leon/ideas/groups/configs/SecurityConfig.class
@@ -23,4 +23,6 @@ com/leon/ideas/groups/model/Group$TeamScore.class
 com/leon/ideas/groups/repository/GroupsRepository.class
 com/leon/ideas/groups/model/Group$TournamentStructure$TournamentConfig.class
 com/leon/ideas/groups/GroupsServiceApplication.class
+com/leon/ideas/groups/service/ScheduledTasks.class
 com/leon/ideas/groups/configs/MongoConfig.class
+com/leon/ideas/groups/model/Group$Scoreboard$UserScore.class

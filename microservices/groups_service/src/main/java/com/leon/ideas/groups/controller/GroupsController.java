@@ -386,6 +386,10 @@ public class GroupsController {
             HttpServletRequest request) {
         
         String userId = (String) request.getAttribute("userId");
+        String jwtToken = request.getHeader("Authorization");
+        if (jwtToken != null && jwtToken.startsWith("Bearer ")) {
+            jwtToken = jwtToken.substring(7);
+        }
         
         System.out.println("🎯 PATCH request received: Update match prediction");
         System.out.println("Group ID: " + groupId);
@@ -393,7 +397,7 @@ public class GroupsController {
         System.out.println("User ID: " + userId);
         System.out.println("Prediction data: " + predictionData);
         
-        return groupsService.updateMatchPrediction(groupId, matchId, userId, predictionData);
+        return groupsService.updateMatchPrediction(groupId, matchId, userId, predictionData, jwtToken);
     }
     
     /**
@@ -512,6 +516,248 @@ public class GroupsController {
         System.out.println("Payment ID: " + paymentId);
         
         return groupsService.updateUserPayment(groupId, userId, paymentId);
+    }
+    
+    /**
+     * POST /football-pool/v1/api/groups/{groupId}/update-scoreboard
+     * Internal endpoint to update scoreboard after prediction points are calculated
+     * Called by auth_service after saving a prediction
+     * 
+     * Required fields in body:
+     * - userId (String)
+     * - points (Integer) - Points for the prediction that was just saved
+     * 
+     * Authentication: X-Service-Token header (internal service call)
+     */
+    @PostMapping("/{groupId}/update-scoreboard")
+    public ResponseEntity<Map<String, Object>> updateScoreboardAfterPrediction(
+            @PathVariable String groupId,
+            @RequestBody Map<String, Object> requestData,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken,
+            HttpServletRequest request) {
+        
+        String userId = (String) requestData.get("userId");
+        Object pointsObj = requestData.get("points");
+        Integer points = pointsObj != null ? (pointsObj instanceof Integer ? (Integer) pointsObj : 
+                      (pointsObj instanceof Number ? ((Number) pointsObj).intValue() : 0)) : 0;
+        
+        System.out.println("📊 POST request received: Update scoreboard after prediction");
+        System.out.println("Group ID: " + groupId);
+        System.out.println("User ID: " + userId);
+        System.out.println("Points: " + points);
+        
+        // Validate service token (for internal calls)
+        if (serviceToken == null || serviceToken.trim().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "Service token required"
+            ));
+        }
+        
+        return groupsService.updateScoreboardAfterPrediction(groupId, userId, points, serviceToken);
+    }
+    
+    /**
+     * GET /football-pool/v1/api/groups/internal/{groupId}
+     * Internal endpoint to get basic group information (competitionId, category, etc.)
+     * Called by auth_service to get competition info for fetching match results
+     * 
+     * Authentication: X-Service-Token header (internal service call)
+     */
+    @GetMapping("/internal/{groupId}")
+    public ResponseEntity<Map<String, Object>> getGroupInfoInternal(
+            @PathVariable String groupId,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        
+        System.out.println("🔍 Internal GET request: Get group info - " + groupId);
+        return groupsService.getGroupInfoInternal(groupId, serviceToken);
+    }
+
+    /**
+     * GET /football-pool/v1/api/groups/{groupId}/matches/{matchId}/internal
+     * Internal endpoint to get match information
+     * Called by auth_service to get match data for calculating prediction points
+     * 
+     * Authentication: X-Service-Token header (internal service call)
+     */
+    @GetMapping("/{groupId}/matches/{matchId}/internal")
+    public ResponseEntity<Map<String, Object>> getMatchByIdInternal(
+            @PathVariable String groupId,
+            @PathVariable String matchId,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        
+        System.out.println("⚽ GET request received (internal): Get match - " + matchId + " from group - " + groupId);
+        
+        // Validate service token (for internal calls)
+        if (serviceToken == null || serviceToken.trim().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "Service token required"
+            ));
+        }
+        
+        return groupsService.getMatchByIdInternal(groupId, matchId, serviceToken);
+    }
+    
+    /**
+     * POST /football-pool/v1/api/groups/internal/{groupId}/predictions
+     * Internal endpoint to update group with user prediction
+     * Called by auth_service after saving a prediction
+     * 
+     * Authentication: X-Service-Token header (internal service call)
+     */
+    @PostMapping("/internal/{groupId}/predictions")
+    public ResponseEntity<Map<String, Object>> updateGroupPrediction(
+            @PathVariable String groupId,
+            @RequestBody Map<String, Object> requestData,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        
+        String userId = (String) requestData.get("userId");
+        String matchId = (String) requestData.get("matchId");
+        Object team1ScoreObj = requestData.get("userTeam1Score");
+        Object team2ScoreObj = requestData.get("userTeam2Score");
+        Integer userTeam1Score = team1ScoreObj != null ? (team1ScoreObj instanceof Integer ? (Integer) team1ScoreObj : 
+                                                         (team1ScoreObj instanceof Number ? ((Number) team1ScoreObj).intValue() : null)) : null;
+        Integer userTeam2Score = team2ScoreObj != null ? (team2ScoreObj instanceof Integer ? (Integer) team2ScoreObj : 
+                                                         (team2ScoreObj instanceof Number ? ((Number) team2ScoreObj).intValue() : null)) : null;
+        Boolean userExtraTime = requestData.get("userExtraTime") != null ? 
+                               (requestData.get("userExtraTime") instanceof Boolean ? (Boolean) requestData.get("userExtraTime") : 
+                                Boolean.parseBoolean(requestData.get("userExtraTime").toString())) : null;
+        Boolean userPenalties = requestData.get("userPenalties") != null ? 
+                               (requestData.get("userPenalties") instanceof Boolean ? (Boolean) requestData.get("userPenalties") : 
+                                Boolean.parseBoolean(requestData.get("userPenalties").toString())) : null;
+        Object penTeam1Obj = requestData.get("userPenaltiesTeam1Score");
+        Object penTeam2Obj = requestData.get("userPenaltiesTeam2Score");
+        Integer userPenaltiesTeam1Score = penTeam1Obj != null ? (penTeam1Obj instanceof Integer ? (Integer) penTeam1Obj : 
+                                                                (penTeam1Obj instanceof Number ? ((Number) penTeam1Obj).intValue() : null)) : null;
+        Integer userPenaltiesTeam2Score = penTeam2Obj != null ? (penTeam2Obj instanceof Integer ? (Integer) penTeam2Obj : 
+                                                                (penTeam2Obj instanceof Number ? ((Number) penTeam2Obj).intValue() : null)) : null;
+        Object pointsObj = requestData.get("points");
+        Integer points = pointsObj != null ? (pointsObj instanceof Integer ? (Integer) pointsObj : 
+                                             (pointsObj instanceof Number ? ((Number) pointsObj).intValue() : 0)) : 0;
+        
+        System.out.println("📝 POST request received: Update group prediction");
+        System.out.println("Group ID: " + groupId);
+        System.out.println("User ID: " + userId);
+        System.out.println("Match ID: " + matchId);
+        
+        // Validate service token (for internal calls)
+        if (serviceToken == null || serviceToken.trim().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "Service token required"
+            ));
+        }
+        
+        return groupsService.updateGroupPrediction(groupId, userId, matchId, userTeam1Score, userTeam2Score,
+                                                   userExtraTime, userPenalties, userPenaltiesTeam1Score, userPenaltiesTeam2Score,
+                                                   points, serviceToken);
+    }
+    
+    /**
+     * POST /football-pool/v1/api/groups/internal/{groupId}/update-matches-detail
+     * Internal endpoint to update group with matchesDetail and user score
+     * Called by auth_service after saving a prediction
+     * 
+     * Required fields in body:
+     * - userId (String)
+     * - competitionId (String)
+     * - matchesDetail (List<Map>) - Array of match info (same as matchInfo from predictions)
+     * - userScore (Integer) - User's accumulated score for the competition
+     * 
+     * Authentication: X-Service-Token header (internal service call)
+     */
+    @PostMapping("/internal/{groupId}/update-matches-detail")
+    public ResponseEntity<Map<String, Object>> updateMatchesDetail(
+            @PathVariable String groupId,
+            @RequestBody Map<String, Object> requestData,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        
+        String userId = (String) requestData.get("userId");
+        String competitionId = (String) requestData.get("competitionId");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> matchesDetail = (List<Map<String, Object>>) requestData.get("matchesDetail");
+        Object userScoreObj = requestData.get("userScore");
+        Integer userScore = userScoreObj != null ? (userScoreObj instanceof Integer ? (Integer) userScoreObj : 
+                      (userScoreObj instanceof Number ? ((Number) userScoreObj).intValue() : 0)) : 0;
+        
+        System.out.println("📊 POST request received (internal): Update matchesDetail");
+        System.out.println("Group ID: " + groupId);
+        System.out.println("User ID: " + userId);
+        System.out.println("Competition ID: " + competitionId);
+        System.out.println("Matches Detail count: " + (matchesDetail != null ? matchesDetail.size() : 0));
+        System.out.println("User Score: " + userScore);
+        
+        // Validate service token (for internal calls)
+        if (serviceToken == null || serviceToken.trim().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "Service token is required"
+            ));
+        }
+        
+        return groupsService.updateMatchesDetailInternal(groupId, userId, competitionId, matchesDetail, userScore, serviceToken);
+    }
+    
+    /**
+     * POST /football-pool/v1/api/groups/internal/update-matches-detail-multiple
+     * Internal endpoint to update multiple groups with matchesDetail and user score
+     * Called by auth_service after saving a prediction
+     * 
+     * Required fields in body:
+     * - groupIds (List<String>) - Array of group IDs where the user should be updated
+     * - userId (String)
+     * - competitionId (String)
+     * - matchesDetail (List<Map>) - Array of match info (same as matchInfo from predictions)
+     * - userScore (Integer) - User's accumulated score for the competition
+     * 
+     * Authentication: X-Service-Token header (internal service call)
+     */
+    @PostMapping("/internal/update-matches-detail-multiple")
+    public ResponseEntity<Map<String, Object>> updateMatchesDetailMultiple(
+            @RequestBody Map<String, Object> requestData,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        
+        @SuppressWarnings("unchecked")
+        List<String> groupIds = (List<String>) requestData.get("groupIds");
+        String userId = (String) requestData.get("userId");
+        String competitionId = (String) requestData.get("competitionId");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> matchesDetail = (List<Map<String, Object>>) requestData.get("matchesDetail");
+        Object userScoreObj = requestData.get("userScore");
+        Integer userScore = userScoreObj != null ? (userScoreObj instanceof Integer ? (Integer) userScoreObj : 
+                      (userScoreObj instanceof Number ? ((Number) userScoreObj).intValue() : 0)) : 0;
+        
+        System.out.println("═══════════════════════════════════════════════════════");
+        System.out.println("📊 POST request received (internal): Update matchesDetail for multiple groups");
+        System.out.println("═══════════════════════════════════════════════════════");
+        System.out.println("Group IDs count: " + (groupIds != null ? groupIds.size() : 0));
+        System.out.println("Group IDs: " + groupIds);
+        System.out.println("User ID: " + userId);
+        System.out.println("Competition ID: " + competitionId);
+        System.out.println("Matches Detail count: " + (matchesDetail != null ? matchesDetail.size() : 0));
+        System.out.println("User Score: " + userScore);
+        if (matchesDetail != null && !matchesDetail.isEmpty()) {
+            System.out.println("First match in matchesDetail: " + matchesDetail.get(0));
+        }
+        
+        // Validate service token (for internal calls)
+        if (serviceToken == null || serviceToken.trim().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                "error", "Service token is required"
+            ));
+        }
+        
+        // Validate required fields
+        if (groupIds == null || groupIds.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "groupIds is required and must not be empty"
+            ));
+        }
+        
+        if (userId == null || userId.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "userId is required"
+            ));
+        }
+        
+        return groupsService.updateMatchesDetailMultipleInternal(groupIds, userId, competitionId, matchesDetail, userScore, serviceToken);
     }
 }
 

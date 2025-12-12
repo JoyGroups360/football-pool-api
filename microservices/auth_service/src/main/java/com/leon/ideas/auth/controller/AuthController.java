@@ -22,7 +22,19 @@ public class AuthController {
     private JwtService jwtService;
 
     @GetMapping
-    public ResponseEntity<Document> getUsers() {
+    public ResponseEntity<Document> getUsers(
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceTokenHeader) {
+        // If service token is provided, validate it (for internal calls)
+        if (serviceTokenHeader != null && !serviceTokenHeader.trim().isEmpty()) {
+            // Validate service token
+            if (!serviceTokenHeader.equals(authService.getServiceToken())) {
+                return new ResponseEntity<>(
+                    new Document("error", "Invalid service token"),
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+        }
+        
         try {
             List<Document> users = authService.getAllUsers();
             Document response = new Document("users", users);
@@ -211,33 +223,112 @@ public class AuthController {
     }
     
     /**
-     * POST /football-pool/v1/api/auth/{userId}/predictions
+     * POST /football-pool/v1/api/auth/predictions
      * Save or update a match prediction for a user
+     * userId must be sent in the body, not in the URL
      */
-    @PostMapping("/{userId}/predictions")
+    @PostMapping("/predictions")
     public ResponseEntity<Document> savePrediction(
-            @PathVariable String userId,
-            @RequestBody Map<String, Object> body) {
-        String groupId = (String) body.get("groupId");
+            @RequestBody Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        
+        // Try to get userId from JWT token first (more secure)
+        String userId = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            try {
+                String token = authHeader.substring(7);
+                userId = jwtService.extractUserId(token);
+                System.out.println("✅ UserId extracted from JWT token: " + userId);
+            } catch (Exception e) {
+                System.err.println("⚠️ Could not extract userId from token: " + e.getMessage());
+            }
+        }
+        
+        // Fallback: Get userId from body (for backward compatibility)
+        if (userId == null || userId.trim().isEmpty()) {
+            userId = (String) body.get("userId");
+            if (userId != null && !userId.trim().isEmpty()) {
+                System.out.println("✅ UserId obtained from request body: " + userId);
+            }
+        }
+        
+        // Validate userId is present
+        if (userId == null || userId.trim().isEmpty()) {
+            return new ResponseEntity<>(
+                new Document("error", "userId is required. Please include Authorization header with valid JWT token, or send userId in the body"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
         String matchId = (String) body.get("matchId");
+        
+        // Get groupIds array from frontend (REQUIRED)
+        @SuppressWarnings("unchecked")
+        List<String> groupIds = (List<String>) body.get("groupIds");
+        if (groupIds == null || groupIds.isEmpty()) {
+            return new ResponseEntity<>(
+                new Document("error", "groupIds array is required"),
+                HttpStatus.BAD_REQUEST
+            );
+        }
+        
+        String competitionId = (String) body.get("competitionId"); // REQUIRED now
         Integer team1Score = body.get("team1Score") != null ? 
             (body.get("team1Score") instanceof Integer ? (Integer) body.get("team1Score") : 
              ((Number) body.get("team1Score")).intValue()) : null;
         Integer team2Score = body.get("team2Score") != null ? 
             (body.get("team2Score") instanceof Integer ? (Integer) body.get("team2Score") : 
              ((Number) body.get("team2Score")).intValue()) : null;
+        Integer realTeam1Score = body.get("realTeam1Score") != null ? 
+            (body.get("realTeam1Score") instanceof Integer ? (Integer) body.get("realTeam1Score") : 
+             ((Number) body.get("realTeam1Score")).intValue()) : null;
+        Integer realTeam2Score = body.get("realTeam2Score") != null ? 
+            (body.get("realTeam2Score") instanceof Integer ? (Integer) body.get("realTeam2Score") : 
+             ((Number) body.get("realTeam2Score")).intValue()) : null;
+        Boolean extraTime = body.get("extraTime") != null ? 
+            (body.get("extraTime") instanceof Boolean ? (Boolean) body.get("extraTime") : 
+             Boolean.parseBoolean(body.get("extraTime").toString())) : null;
+        Boolean realExtraTime = body.get("realExtraTime") != null ? 
+            (body.get("realExtraTime") instanceof Boolean ? (Boolean) body.get("realExtraTime") : 
+             Boolean.parseBoolean(body.get("realExtraTime").toString())) : null;
+        Integer penaltiesteam1Score = body.get("penaltiesteam1Score") != null ? 
+            (body.get("penaltiesteam1Score") instanceof Integer ? (Integer) body.get("penaltiesteam1Score") : 
+             ((Number) body.get("penaltiesteam1Score")).intValue()) : null;
+        Integer penaltiesteam2Score = body.get("penaltiesteam2Score") != null ? 
+            (body.get("penaltiesteam2Score") instanceof Integer ? (Integer) body.get("penaltiesteam2Score") : 
+             ((Number) body.get("penaltiesteam2Score")).intValue()) : null;
         
-        return authService.savePrediction(userId, groupId, matchId, team1Score, team2Score);
+        // Get team1 and team2 from frontend (REQUIRED)
+        String team1 = (String) body.get("team1");
+        String team2 = (String) body.get("team2");
+        
+        return authService.savePrediction(userId, groupIds, matchId, team1Score, team2Score,
+                                         realTeam1Score, realTeam2Score,
+                                         extraTime, realExtraTime,
+                                         penaltiesteam1Score, penaltiesteam2Score,
+                                         competitionId, team1, team2);
     }
     
     /**
      * GET /football-pool/v1/api/auth/{userId}/predictions
      * Get all predictions for a user, optionally filtered by groupId
+     * Supports both JWT token (Authorization header) and service token (X-Service-Token header) for internal calls
      */
     @GetMapping("/{userId}/predictions")
     public ResponseEntity<Document> getUserPredictions(
             @PathVariable String userId,
-            @RequestParam(required = false) String groupId) {
+            @RequestParam(required = false) String groupId,
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceTokenHeader) {
+        // If service token is provided, validate it (for internal calls)
+        if (serviceTokenHeader != null && !serviceTokenHeader.trim().isEmpty()) {
+            // Validate service token
+            if (!serviceTokenHeader.equals(authService.getServiceToken())) {
+                return new ResponseEntity<>(
+                    new Document("error", "Invalid service token"),
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+        }
         return authService.getUserPredictions(userId, groupId);
     }
     
@@ -254,18 +345,28 @@ public class AuthController {
     }
     
     /**
-     * PUT /football-pool/v1/api/auth/{userId}/predictions/{groupId}/{matchId}/points
+     * PUT /football-pool/v1/api/auth/{userId}/predictions/{competitionId}/{matchId}/points
      * Update prediction points after calculating scores
      */
-    @PutMapping("/{userId}/predictions/{groupId}/{matchId}/points")
+    @PutMapping("/{userId}/predictions/{competitionId}/{matchId}/points")
     public ResponseEntity<Document> updatePredictionPoints(
+            @PathVariable String userId,
+            @PathVariable String competitionId,
+            @PathVariable String matchId) {
+        return authService.updatePredictionPoints(userId, competitionId, matchId);
+    }
+    
+    /**
+     * GET /football-pool/v1/api/auth/internal/predictions/{userId}/{groupId}/{matchId}
+     * Internal endpoint for groups_service to get predictions using service token
+     * Only accessible with valid service token in X-Service-Token header
+     */
+    @GetMapping("/internal/predictions/{userId}/{groupId}/{matchId}")
+    public ResponseEntity<Document> getPredictionInternal(
             @PathVariable String userId,
             @PathVariable String groupId,
             @PathVariable String matchId,
-            @RequestBody Map<String, Object> body) {
-        Integer points = body.get("points") != null ? 
-            (body.get("points") instanceof Integer ? (Integer) body.get("points") : 
-             ((Number) body.get("points")).intValue()) : null;
-        return authService.updatePredictionPoints(userId, groupId, matchId, points);
+            @RequestHeader(value = "X-Service-Token", required = false) String serviceToken) {
+        return authService.getUserPredictionInternal(userId, groupId, matchId, serviceToken);
     }
 }

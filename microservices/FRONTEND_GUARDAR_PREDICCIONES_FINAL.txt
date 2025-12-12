@@ -1,0 +1,456 @@
+================================================================================
+DOCUMENTACIÓN FRONTEND: GUARDAR PREDICCIONES
+================================================================================
+
+RESUMEN EJECUTIVO
+================================================================================
+
+El frontend debe enviar los IDs de los grupos donde quiere guardar la predicción.
+El backend guardará la predicción UNA SOLA VEZ en users.predictions[] (sin groupId).
+Luego, actualizará cada grupo en groups.userPredictions[] con la UserPrediction del usuario.
+El backend CALCULA AUTOMÁTICAMENTE los puntos comparando el marcador predicho vs el real.
+
+IMPORTANTE:
+-----------
+- Las predicciones se guardan UNA VEZ por usuario y partido (no por grupo)
+- La predicción es la MISMA para todos los grupos del mismo tipo de competición
+- El backend CALCULA automáticamente los puntos si el partido ya tiene resultado real
+- Cada grupo se actualiza con la UserPrediction para poder calcular scores por grupo
+- El frontend envía los groupIds donde quiere aplicar la predicción
+
+================================================================================
+ENDPOINT
+================================================================================
+
+POST /football-pool/v1/api/auth/{userId}/predictions
+
+Headers:
+--------
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+
+Body (JSON):
+-----------
+{
+  "matchId": "group-a-match-1",
+  "team1Score": 2,
+  "team2Score": 1,
+  "groupIds": [
+    "691d5cc672ce370633800343",
+    "691fee9cd05a2b08479ce37b",
+    "6923da8daf258e4c81793b31"
+  ],
+  "competitionId": "club-world-cup",        // OPCIONAL: ayuda al backend a calcular puntos
+  "category": "fifaOfficialClubCups"        // OPCIONAL: ayuda al backend a calcular puntos
+}
+
+⚠️ IMPORTANTE:
+--------------
+✅ REQUERIDO: "matchId", "team1Score", "team2Score", "groupIds" (array)
+✅ "groupIds" debe ser un array con los IDs de los grupos donde aplicar la predicción
+✅ OPCIONAL: "competitionId", "category" (ayudan a calcular puntos si el partido ya se jugó)
+✅ Si el input está vacío, enviar 0
+✅ El backend guardará la predicción UNA VEZ y la aplicará a todos los grupos enviados
+✅ El backend CALCULA AUTOMÁTICAMENTE los puntos comparando con el resultado real
+
+Body para Fases de Eliminación (Knockout) - Opcional:
+------------------------------------------------------
+{
+  "matchId": "round-of-16-1",
+  "team1Score": 1,
+  "team2Score": 1,
+  "groupIds": ["691d5cc672ce370633800343", "691fee9cd05a2b08479ce37b"],
+  "userExtraTime": true,                    // OPCIONAL: solo para fases de eliminación
+  "userPenalties": true,                    // OPCIONAL: solo para fases de eliminación
+  "userPenaltiesTeam1Score": 4,             // OPCIONAL: solo para fases de eliminación
+  "userPenaltiesTeam2Score": 3,             // OPCIONAL: solo para fases de eliminación
+  "competitionId": "club-world-cup",        // OPCIONAL: ayuda al backend a calcular puntos
+  "category": "fifaOfficialClubCups"        // OPCIONAL: ayuda al backend a calcular puntos
+}
+
+================================================================================
+COMPORTAMIENTO DEL BACKEND
+================================================================================
+
+1. GUARDAR PREDICCIÓN EN USERS:
+   - Guarda la predicción UNA SOLA VEZ en users.predictions[]
+   - NO incluye groupId (la predicción es global para el usuario)
+   - Si ya existe una predicción para ese matchId, la actualiza
+
+2. CALCULAR PUNTOS AUTOMÁTICAMENTE:
+   - El backend busca automáticamente el resultado real del partido
+   - Si el partido ya tiene resultados reales (isPlayed = true):
+     * Compara el marcador predicho vs el marcador real
+     * Calcula los puntos según la tabla de puntuación
+     * Actualiza los puntos en users.predictions[] (una vez)
+   - Si el partido no se ha jugado, los puntos quedan en 0
+
+3. ACTUALIZAR CADA GRUPO:
+   - Para cada groupId enviado, actualiza groups.userPredictions[]
+   - Agrega o actualiza la UserPrediction para ese usuario y partido
+   - Incluye los puntos calculados automáticamente
+   - Esto permite calcular scores por grupo
+
+4. ACTUALIZAR SCOREBOARDS:
+   - Si se calcularon puntos, actualiza el scoreboard de cada grupo
+   - Recalcula el totalScore del usuario en cada grupo
+   - Reordena el scoreboard por score
+
+================================================================================
+TABLA DE PUNTUACIÓN (Sistema de Cálculo Automático)
+================================================================================
+
+PUNTOS BASE:
+------------
+• Marcador exacto: 5 puntos
+  Ejemplo: Predices 2-1 y el resultado es 2-1 → 5 puntos
+
+• Resultado correcto (ganar/empatar/perder) sin marcador exacto: 3 puntos
+  Ejemplo: Predices 2-1 (gana equipo 1) y el resultado es 3-0 (gana equipo 1) → 3 puntos
+  Ejemplo: Predices 1-1 (empate) y el resultado es 2-2 (empate) → 3 puntos
+
+• Resultado incorrecto: 0 puntos
+  Ejemplo: Predices 2-1 (gana equipo 1) y el resultado es 1-2 (gana equipo 2) → 0 puntos
+
+PUNTOS ADICIONALES (Solo Fases de Eliminación):
+------------------------------------------------
+• +1 punto si predijiste tiempo extra y ocurrió
+  Ejemplo: Predices extraTime: true y el partido va a tiempo extra → +1 punto
+
+• +2 puntos si predijiste penales y ocurrieron
+  Ejemplo: Predices penalties: true y el partido se define por penales → +2 puntos
+
+• +3 puntos si predijiste el marcador exacto de penales
+  Ejemplo: Predices penaltiesTeam1Score: 4, penaltiesTeam2Score: 3 
+           y los penales terminan 4-3 → +3 puntos adicionales
+
+NOTA IMPORTANTE:
+----------------
+• El backend hace TODOS los cálculos automáticamente
+• El frontend SOLO envía las predicciones del usuario
+• El frontend NO debe calcular puntos manualmente
+• Los puntos se calculan en el momento de guardar si el partido ya se jugó
+• Si el partido aún no se jugó, los puntos quedan en 0 hasta que se actualice el resultado
+
+================================================================================
+ESTRUCTURA DE DATOS
+================================================================================
+
+PREDICCIÓN EN USERS (users.predictions[]):
+-------------------------------------------
+{
+  "_id": "6908d0864077087454146d5c",
+  "predictions": [
+    {
+      "matchId": "group-a-match-1",
+      "team1Score": 2,
+      "team2Score": 1,
+      "predictedDate": "2025-12-04T02:04:09.000Z",
+      "points": 5                             // ← CALCULADO AUTOMÁTICAMENTE
+    }
+  ]
+}
+
+IMPORTANTE:
+-----------
+- Las predicciones NO tienen groupId (son globales)
+- Una sola predicción por matchId por usuario
+- Los puntos son calculados automáticamente por el backend
+- Las predicciones están ordenadas por matchId
+
+PREDICCIÓN EN GROUPS (groups.userPredictions[]):
+-------------------------------------------------
+{
+  "groupId": "691d5cc672ce370633800343",
+  "userPredictions": [
+    {
+      "matchId": "group-a-match-1",
+      "userId": "6908d0864077087454146d5c",
+      "userTeam1Score": 2,
+      "userTeam2Score": 1,
+      "predictedDate": "2025-12-04T02:04:09.000Z",
+      "points": 5                             // ← MISMO VALOR CALCULADO AUTOMÁTICAMENTE
+    }
+  ]
+}
+
+IMPORTANTE:
+-----------
+- Cada grupo tiene su propia lista de userPredictions
+- Permite calcular scores por grupo
+- La misma predicción (con los mismos puntos) se guarda en múltiples grupos
+- Los puntos son los mismos en todos los grupos (misma predicción)
+
+================================================================================
+RESPUESTA DEL BACKEND
+================================================================================
+
+200 OK:
+-------
+{
+  "message": "Prediction saved successfully",
+  "userId": "6908d0864077087454146d5c",
+  "matchId": "group-a-match-1",
+  "team1Score": 2,
+  "team2Score": 1,
+  "groupsApplied": [
+    {
+      "groupId": "691d5cc672ce370633800343",
+      "groupName": "Los Mejores",
+      "pointsCalculated": true,               // ← true si el backend calculó puntos
+      "points": 5,                            // ← PUNTOS CALCULADOS AUTOMÁTICAMENTE
+      "totalScore": 15                        // ← Score total del usuario en ese grupo
+    },
+    {
+      "groupId": "691fee9cd05a2b08479ce37b",
+      "groupName": "Grupo de Amigos",
+      "pointsCalculated": true,
+      "points": 5,
+      "totalScore": 15
+    }
+  ]
+}
+
+Campos de respuesta:
+--------------------
+- message: Mensaje de confirmación
+- userId: ID del usuario
+- matchId: ID del partido
+- team1Score: Marcador predicho para equipo 1
+- team2Score: Marcador predicho para equipo 2
+- groupsApplied: Array con información de cada grupo donde se aplicó la predicción
+  - groupId: ID del grupo
+  - groupName: Nombre del grupo
+  - pointsCalculated: true si se calcularon puntos (partido ya jugado)
+  - points: Puntos obtenidos por esta predicción (CALCULADOS AUTOMÁTICAMENTE)
+  - totalScore: Score total del usuario en ese grupo
+
+400 Bad Request:
+----------------
+{
+  "error": "All fields are required: userId, matchId, team1Score, team2Score, and groupIds"
+}
+
+500 Internal Server Error:
+--------------------------
+{
+  "error": "Error saving prediction: [detalles del error]"
+}
+
+================================================================================
+EJEMPLOS DE USO
+================================================================================
+
+Ejemplo 1: Predicción simple (Fase de Grupos)
+----------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+{
+  "matchId": "group-a-match-1",
+  "team1Score": 2,
+  "team2Score": 1,
+  "groupIds": ["691d5cc672ce370633800343", "691fee9cd05a2b08479ce37b"],
+  "competitionId": "club-world-cup",
+  "category": "fifaOfficialClubCups"
+}
+
+Respuesta (si el partido ya se jugó con resultado 2-1):
+{
+  "message": "Prediction saved successfully",
+  "userId": "6908d0864077087454146d5c",
+  "matchId": "group-a-match-1",
+  "team1Score": 2,
+  "team2Score": 1,
+  "groupsApplied": [
+    {
+      "groupId": "691d5cc672ce370633800343",
+      "groupName": "Los Mejores",
+      "pointsCalculated": true,
+      "points": 5,                      // ← 5 puntos (marcador exacto)
+      "totalScore": 15
+    },
+    {
+      "groupId": "691fee9cd05a2b08479ce37b",
+      "groupName": "Grupo de Amigos",
+      "pointsCalculated": true,
+      "points": 5,                      // ← Mismos 5 puntos
+      "totalScore": 15
+    }
+  ]
+}
+
+Ejemplo 2: Predicción con tiempo extra y penales (Fase de Eliminación)
+-----------------------------------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+{
+  "matchId": "round-of-16-1",
+  "team1Score": 1,
+  "team2Score": 1,
+  "groupIds": ["691d5cc672ce370633800343"],
+  "userExtraTime": true,
+  "userPenalties": true,
+  "userPenaltiesTeam1Score": 4,
+  "userPenaltiesTeam2Score": 3,
+  "competitionId": "club-world-cup",
+  "category": "fifaOfficialClubCups"
+}
+
+Respuesta (si el partido terminó 1-1, fue a penales 4-3):
+{
+  "message": "Prediction saved successfully",
+  "userId": "6908d0864077087454146d5c",
+  "matchId": "round-of-16-1",
+  "team1Score": 1,
+  "team2Score": 1,
+  "userExtraTime": true,
+  "userPenalties": true,
+  "userPenaltiesTeam1Score": 4,
+  "userPenaltiesTeam2Score": 3,
+  "groupsApplied": [
+    {
+      "groupId": "691d5cc672ce370633800343",
+      "groupName": "Los Mejores",
+      "pointsCalculated": true,
+      "points": 11,                     // ← 5 (exacto) + 1 (extra time) + 2 (penalties) + 3 (exacto penalties) = 11
+      "totalScore": 26
+    }
+  ]
+}
+
+Ejemplo 3: Predicción para un partido que aún no se ha jugado
+--------------------------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+{
+  "matchId": "group-b-match-5",
+  "team1Score": 3,
+  "team2Score": 2,
+  "groupIds": ["691d5cc672ce370633800343"]
+}
+
+Respuesta (partido no jugado):
+{
+  "message": "Prediction saved successfully",
+  "userId": "6908d0864077087454146d5c",
+  "matchId": "group-b-match-5",
+  "team1Score": 3,
+  "team2Score": 2,
+  "groupsApplied": [
+    {
+      "groupId": "691d5cc672ce370633800343",
+      "groupName": "Los Mejores",
+      "pointsCalculated": false,        // ← No se calcularon puntos (partido no jugado)
+      "points": 0,                      // ← 0 puntos hasta que se juegue el partido
+      "totalScore": 15
+    }
+  ]
+}
+
+================================================================================
+NOTAS IMPORTANTES
+================================================================================
+
+1. PREDICCIÓN ÚNICA:
+   - La predicción se guarda UNA SOLA VEZ en users.predictions[]
+   - Se aplica a todos los grupos que envíes en groupIds
+   - No crea múltiples predicciones para el mismo partido
+   - La predicción es la MISMA para todos los grupos del mismo tipo de competición
+
+2. ACTUALIZACIÓN:
+   - Si ya existe una predicción para ese matchId, se actualiza
+   - Si cambias el marcador, se actualiza en users Y en todos los grupos
+   - Los puntos se recalculan automáticamente si el partido ya se jugó
+
+3. CÁLCULO AUTOMÁTICO DE PUNTOS:
+   - El backend CALCULA AUTOMÁTICAMENTE los puntos
+   - Compara el marcador predicho vs el marcador real
+   - Usa la tabla de puntuación (5 exacto, 3 resultado correcto, 0 incorrecto)
+   - Agrega puntos adicionales para fases de eliminación
+   - El frontend NO debe calcular puntos manualmente
+
+4. PUNTOS POR GRUPO:
+   - Los puntos son los mismos en todos los grupos (misma predicción)
+   - El totalScore por grupo se calcula sumando todas las predicciones de ese grupo
+   - Los puntos se actualizan automáticamente cuando se actualiza el resultado del partido
+
+5. SCOREBOARD:
+   - Se actualiza automáticamente después de calcular puntos
+   - Se recalcula cada 2 horas automáticamente
+   - El orden se basa en: score (desc), diferencia de goles (desc), goles a favor (desc)
+
+6. FRONTEND:
+   - El frontend NO debe calcular puntos
+   - El frontend solo debe enviar las predicciones
+   - Los puntos se calculan y actualizan automáticamente en el backend
+   - El frontend debe mostrar los puntos que recibe en la respuesta
+
+================================================================================
+VALIDACIONES DEL FRONTEND
+================================================================================
+
+1. Campos requeridos:
+   - matchId: Debe ser un string válido
+   - team1Score: Debe ser un número entero >= 0
+   - team2Score: Debe ser un número entero >= 0
+   - groupIds: Debe ser un array con al menos un groupId
+
+2. Campos opcionales:
+   - competitionId: String (ayuda al backend a calcular puntos)
+   - category: String (ayuda al backend a calcular puntos)
+   - userExtraTime: Solo para fases de eliminación
+   - userPenalties: Solo para fases de eliminación
+   - userPenaltiesTeam1Score: Solo para fases de eliminación
+   - userPenaltiesTeam2Score: Solo para fases de eliminación
+
+3. Validaciones adicionales:
+   - Los marcadores deben ser números enteros no negativos
+   - Si el partido ya se jugó, aún puedes actualizar tu predicción
+   - Los puntos se recalcularán automáticamente
+
+================================================================================
+FLUJO RECOMENDADO
+================================================================================
+
+1. Usuario ingresa marcadores en el formulario
+2. Frontend valida que los campos sean correctos
+3. Frontend obtiene los groupIds de los grupos donde está el usuario
+4. Frontend envía la predicción con todos los groupIds
+5. Backend guarda la predicción UNA VEZ
+6. Backend CALCULA AUTOMÁTICAMENTE los puntos comparando con resultado real
+7. Backend actualiza cada grupo con la UserPrediction (incluyendo puntos)
+8. Backend actualiza scoreboards si se calcularon puntos
+9. Frontend recibe respuesta con información de cada grupo (incluyendo puntos)
+10. Frontend muestra confirmación al usuario con los puntos obtenidos
+
+================================================================================
+RESUMEN PARA EL FRONTEND
+================================================================================
+
+LO QUE DEBE HACER EL FRONTEND:
+-------------------------------
+✅ Capturar la predicción del usuario (marcadores)
+✅ Obtener los groupIds donde el usuario está participando
+✅ Enviar la predicción al endpoint con matchId, team1Score, team2Score, groupIds
+✅ Opcionalmente enviar competitionId y category para ayudar al cálculo
+✅ Mostrar la respuesta al usuario (puntos calculados, grupos actualizados)
+
+LO QUE NO DEBE HACER EL FRONTEND:
+----------------------------------
+❌ Calcular puntos manualmente
+❌ Comparar marcadores predichos con reales
+❌ Implementar la lógica de puntuación
+❌ Guardar predicciones por separado en cada grupo
+
+LO QUE HACE EL BACKEND AUTOMÁTICAMENTE:
+----------------------------------------
+✅ Guarda la predicción UNA vez
+✅ Busca el resultado real del partido
+✅ Compara marcador predicho vs marcador real
+✅ Calcula los puntos según la tabla de puntuación
+✅ Actualiza todos los grupos con la predicción y puntos
+✅ Actualiza los scoreboards
+
+================================================================================
+FIN DE DOCUMENTACIÓN
+================================================================================

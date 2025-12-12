@@ -4,6 +4,7 @@
 /Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/competitions_service/src/main/java/com/leon/ideas/competitions/configs/SecurityConfig.java
 /Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/competitions_service/src/main/java/com/leon/ideas/competitions/controller/CompetitionsController.java
 /Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/competitions_service/src/main/java/com/leon/ideas/competitions/model/Competition.java
+/Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/competitions_service/src/main/java/com/leon/ideas/competitions/model/TournamentStructure.java
 /Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/competitions_service/src/main/java/com/leon/ideas/competitions/repository/CompetitionsRepository.java
 /Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/competitions_service/src/main/java/com/leon/ideas/competitions/security/JwtAuthenticationEntryPoint.java
 /Users/joelleon/Desktop/personal/football-pool/BE/football-pool-api/microservices/competitions_service/src/main/java/com/leon/ideas/competitions/security/JwtAuthenticationFilter.java

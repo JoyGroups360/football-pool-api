@@ -419,6 +419,210 @@ public class CompetitionsRepository {
         }
         return new ArrayList<>();
     }
+
+    /**
+     * Find a match in tournament structure by matchId
+     */
+    @SuppressWarnings("unchecked")
+    public Document findMatchInTournamentStructure(String category, String competitionId, String matchId) {
+        try {
+            Document competition = getCompetitionById(category, competitionId);
+            if (competition == null) {
+                return null;
+            }
+
+            // First, try to find in tournamentStructure
+            if (competition.containsKey("tournamentStructure")) {
+                Document tournamentStructure = (Document) competition.get("tournamentStructure");
+                if (tournamentStructure != null && tournamentStructure.containsKey("stages")) {
+                    Map<String, Object> stages = (Map<String, Object>) tournamentStructure.get("stages");
+                    if (stages != null) {
+                        Document match = searchMatchInStages(stages, matchId);
+                        if (match != null) {
+                            return match;
+                        }
+                    }
+                }
+            }
+
+            // If not found, try to find in groupsKindTournament
+            if (competition.containsKey("groupsKindTournament")) {
+                Document groupsKindTournament = (Document) competition.get("groupsKindTournament");
+                if (groupsKindTournament != null && groupsKindTournament.containsKey("stages")) {
+                    Map<String, Object> stages = (Map<String, Object>) groupsKindTournament.get("stages");
+                    if (stages != null) {
+                        Document match = searchMatchInStages(stages, matchId);
+                        if (match != null) {
+                            return match;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        } catch (Exception e) {
+            System.err.println("❌ Error finding match in tournament structure: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    /**
+     * Helper method to search for a match in stages (used by both tournamentStructure and groupsKindTournament)
+     */
+    @SuppressWarnings("unchecked")
+    private Document searchMatchInStages(Map<String, Object> stages, String matchId) {
+        // Search through all stages
+        for (Object stageObj : stages.values()) {
+            if (!(stageObj instanceof Document)) {
+                continue;
+            }
+            Document stage = (Document) stageObj;
+
+            // Check matches in knockout stages
+            if (stage.containsKey("matches")) {
+                List<Document> matches = (List<Document>) stage.get("matches");
+                if (matches != null) {
+                    for (Document match : matches) {
+                        if (matchId.equals(match.getString("matchId"))) {
+                            return match;
+                        }
+                    }
+                }
+            }
+
+            // Check matches in group stages
+            if (stage.containsKey("groups")) {
+                List<Document> groups = (List<Document>) stage.get("groups");
+                if (groups != null) {
+                    for (Document group : groups) {
+                        if (group.containsKey("matches")) {
+                            List<Document> matches = (List<Document>) group.get("matches");
+                            if (matches != null) {
+                                for (Document match : matches) {
+                                    if (matchId.equals(match.getString("matchId"))) {
+                                        return match;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Update match results in tournament structure
+     */
+    @SuppressWarnings("unchecked")
+    public boolean updateMatchResults(String category, String competitionId, String matchId, Map<String, Object> results) {
+        try {
+            ObjectId objectId = getCompetitionsDocumentId();
+            if (objectId == null) {
+                System.err.println("❌ Error: Could not find competitions document");
+                return false;
+            }
+
+            // Find the competition index
+            List<Document> competitions = getCompetitionsByCategory(category);
+            int competitionIndex = -1;
+            for (int i = 0; i < competitions.size(); i++) {
+                if (competitionId.equals(competitions.get(i).getString("id"))) {
+                    competitionIndex = i;
+                    break;
+                }
+            }
+
+            if (competitionIndex == -1) {
+                return false;
+            }
+
+            Document competition = competitions.get(competitionIndex);
+            if (competition == null || !competition.containsKey("tournamentStructure")) {
+                return false;
+            }
+
+            Document tournamentStructure = (Document) competition.get("tournamentStructure");
+            if (tournamentStructure == null || !tournamentStructure.containsKey("stages")) {
+                return false;
+            }
+
+            Map<String, Object> stages = (Map<String, Object>) tournamentStructure.get("stages");
+            if (stages == null) {
+                return false;
+            }
+
+            // Find and update the match
+            String matchPath = null;
+            for (Map.Entry<String, Object> stageEntry : stages.entrySet()) {
+                if (!(stageEntry.getValue() instanceof Document)) {
+                    continue;
+                }
+                Document stage = (Document) stageEntry.getValue();
+
+                // Check matches in knockout stages
+                if (stage.containsKey("matches")) {
+                    List<Document> matches = (List<Document>) stage.get("matches");
+                    if (matches != null) {
+                        for (int i = 0; i < matches.size(); i++) {
+                            Document match = matches.get(i);
+                            if (matchId.equals(match.getString("matchId"))) {
+                                matchPath = category + "." + competitionIndex + ".tournamentStructure.stages." + stageEntry.getKey() + ".matches." + i;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // Check matches in group stages
+                if (stage.containsKey("groups")) {
+                    List<Document> groups = (List<Document>) stage.get("groups");
+                    if (groups != null) {
+                        for (int g = 0; g < groups.size(); g++) {
+                            Document group = groups.get(g);
+                            if (group.containsKey("matches")) {
+                                List<Document> matches = (List<Document>) group.get("matches");
+                                if (matches != null) {
+                                    for (int m = 0; m < matches.size(); m++) {
+                                        Document match = matches.get(m);
+                                        if (matchId.equals(match.getString("matchId"))) {
+                                            matchPath = category + "." + competitionIndex + ".tournamentStructure.stages." + stageEntry.getKey() + ".groups." + g + ".matches." + m;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (matchPath != null) {
+                    break;
+                }
+            }
+
+            if (matchPath == null) {
+                return false;
+            }
+
+            // Update the match with new results
+            Query query = new Query(Criteria.where("_id").is(objectId));
+            Update update = new Update();
+            
+            for (Map.Entry<String, Object> entry : results.entrySet()) {
+                update.set(matchPath + "." + entry.getKey(), entry.getValue());
+            }
+
+            UpdateResult result = competitionsMongoTemplate.updateFirst(query, update, COLLECTION_NAME);
+            return result.getModifiedCount() > 0;
+        } catch (Exception e) {
+            System.err.println("❌ Error updating match results: " + e.getMessage());
+            e.printStackTrace();
+            return false;
+        }
+    }
 }
 
 

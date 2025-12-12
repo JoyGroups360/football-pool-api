@@ -506,6 +506,127 @@ public class CompetitionsService {
     }
 
     /**
+     * Get tournament structure for a competition
+     */
+    public ResponseEntity<?> getTournamentStructure(String category, String competitionId) {
+        try {
+            if (!isValidCategory(category)) {
+                return new ResponseEntity<>(
+                    new Document("error", "Invalid category"),
+                    HttpStatus.BAD_REQUEST
+                );
+            }
+
+            Document competition = competitionsRepository.getCompetitionById(category, competitionId);
+            if (competition == null) {
+                return new ResponseEntity<>(
+                    new Document("error", "Competition not found"),
+                    HttpStatus.NOT_FOUND
+                );
+            }
+
+            // Return tournamentStructure if it exists
+            if (competition.containsKey("tournamentStructure")) {
+                return new ResponseEntity<>(
+                    new Document("tournamentStructure", competition.get("tournamentStructure")),
+                    HttpStatus.OK
+                );
+            } else {
+                return new ResponseEntity<>(
+                    new Document("error", "Tournament structure not found for this competition"),
+                    HttpStatus.NOT_FOUND
+                );
+            }
+        } catch (Exception e) {
+            return new ResponseEntity<>(
+                new Document("error", "Error retrieving tournament structure: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    /**
+     * Get a specific match with REAL results (internal endpoint)
+     */
+    public ResponseEntity<?> getMatch(String category, String competitionId, String matchId, String serviceToken) {
+        try {
+            if (!isValidCategory(category)) {
+                return new ResponseEntity<>(
+                    new Document("error", "Invalid category"),
+                    HttpStatus.BAD_REQUEST
+                );
+            }
+
+            // Validate service token for internal calls
+            if (serviceToken == null || serviceToken.trim().isEmpty()) {
+                return new ResponseEntity<>(
+                    new Document("error", "Service token required for internal endpoints"),
+                    HttpStatus.UNAUTHORIZED
+                );
+            }
+
+            Document competition = competitionsRepository.getCompetitionById(category, competitionId);
+            if (competition == null) {
+                return new ResponseEntity<>(
+                    new Document("error", "Competition not found"),
+                    HttpStatus.NOT_FOUND
+                );
+            }
+
+            // Find match in tournamentStructure
+            Document match = competitionsRepository.findMatchInTournamentStructure(category, competitionId, matchId);
+            if (match == null) {
+                return new ResponseEntity<>(
+                    new Document("error", "Match not found"),
+                    HttpStatus.NOT_FOUND
+                );
+            }
+
+            return new ResponseEntity<>(
+                new Document("match", match),
+                HttpStatus.OK
+            );
+        } catch (Exception e) {
+            return new ResponseEntity<>(
+                new Document("error", "Error retrieving match: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    /**
+     * Update REAL match results (only backend/admin can modify)
+     */
+    public ResponseEntity<?> updateMatchResults(String category, String competitionId, String matchId, Map<String, Object> results) {
+        try {
+            if (!isValidCategory(category)) {
+                return new ResponseEntity<>(
+                    new Document("error", "Invalid category"),
+                    HttpStatus.BAD_REQUEST
+                );
+            }
+
+            boolean success = competitionsRepository.updateMatchResults(category, competitionId, matchId, results);
+            if (success) {
+                return new ResponseEntity<>(
+                    new Document("message", "Match results updated successfully"),
+                    HttpStatus.OK
+                );
+            } else {
+                return new ResponseEntity<>(
+                    new Document("error", "Match not found or update failed"),
+                    HttpStatus.NOT_FOUND
+                );
+            }
+        } catch (Exception e) {
+            return new ResponseEntity<>(
+                new Document("error", "Error updating match results: " + e.getMessage()),
+                HttpStatus.INTERNAL_SERVER_ERROR
+            );
+        }
+    }
+
+    /**
      * Validate if category is valid
      */
     private boolean isValidCategory(String category) {

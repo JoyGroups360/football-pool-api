@@ -27,8 +27,19 @@ public class Group {
     // Legacy scoreboard (for backward compatibility - phase 1: group stage)
     private Scoreboard scoreboard;
     
-    // New structure: Tournament stages (groups, round-of-16, quarter-finals, semi-finals, third-place, final)
+    // Tournament structure (DEPRECATED - results should come from competitions_service)
+    // This is kept for backward compatibility, but real match results (team1Score, team2Score)
+    // should be stored in competitions_service, not here
     private TournamentStructure tournamentStructure;
+    
+    // User predictions for matches in this group
+    // List of predictions where each prediction has userId and matchId
+    // Real match results are stored in competitions_service
+    private List<UserPrediction> userPredictions;
+    
+    // Matches detail - Array of match info (same as matchInfo from predictions)
+    // This contains all the match predictions with real scores for the competition
+    private List<Map<String, Object>> matchesDetail;
     
     private Date createdAt;
     private Date updatedAt;
@@ -50,9 +61,11 @@ public class Group {
     public static class GroupUser {
         @Field("_id") // MongoDB stores as _id, map it to id field
         @com.fasterxml.jackson.annotation.JsonProperty("id") // Always serialize as "id" in JSON (not _id)
-        private String id; // User ID
+        private String id; // User ID (same as userId, kept for backward compatibility)
+        private String userId; // User ID (explicit field)
         private String nombre; // User name
         private Integer score; // User score in the group
+        private List<Map<String, Object>> matchesInfo; // Match info from user's predictions for this competition
     }
     
     /**
@@ -70,99 +83,79 @@ public class Group {
     }
     
     /**
-     * Legacy Scoreboard - kept for backward compatibility
-     * Used for group stage phase
+     * Scoreboard - stores user scores and rankings
      */
     @Data
     public static class Scoreboard {
-        private List<TeamScore> teams;
+        private List<UserScore> users; // List of users with their scores
         
         @Data
-        public static class TeamScore {
-            private String teamId;
-            private String teamName;
-            private String teamFlag;
-            private Integer played;
-            private Integer won;
-            private Integer drawn;
-            private Integer lost;
-            private Integer goalsFor;
-            private Integer goalsAgainst;
-            private Integer goalDifference;
-            private Integer points;
+        public static class UserScore {
+            private String userId; // User ID
+            private String userName; // User name (for display)
+            private Integer score; // Total points accumulated
+            private Integer position; // Ranking position (1 = first place, 2 = second, etc.)
+            private Date lastUpdated; // Last time the score was updated
         }
     }
     
     /**
      * Tournament Structure - handles all stages of the tournament
-     * Flexible structure that supports different tournament formats
+     * DEPRECATED: Real match results (team1Score, team2Score) should be in competitions_service
+     * This is kept for backward compatibility and structure reference
      */
     @Data
     public static class TournamentStructure {
-        private String tournamentFormat; // "groups-then-knockout", "only-groups", "only-knockout", "custom"
-        private String currentStage; // Current active stage ID
-        private Map<String, Stage> stages; // Key: stageId, Value: Stage data
-        private TournamentConfig config; // Tournament configuration (number of groups, teams per group, etc.)
+        private String tournamentFormat;
+        private String currentStage;
+        private Map<String, Stage> stages;
+        private TournamentConfig config;
         
-        /**
-         * Tournament Configuration - defines the tournament format
-         */
         @Data
         public static class TournamentConfig {
-            private Integer totalTeams; // Total number of teams in the tournament
-            private Integer numberOfGroups; // Number of groups (if applicable)
-            private Integer teamsPerGroup; // Teams per group (if applicable)
-            private Integer teamsQualifyPerGroup; // How many teams qualify from each group (usually 2)
-            private Boolean hasGroupStage; // Does this tournament have a group stage?
-            private Boolean hasKnockoutStage; // Does this tournament have knockout rounds?
-            private List<String> knockoutRounds; // List of knockout rounds: ["round-of-16", "quarter-finals", "semi-finals", "third-place", "final"]
+            private Integer totalTeams;
+            private Integer numberOfGroups;
+            private Integer teamsPerGroup;
+            private Integer teamsQualifyPerGroup;
+            private Boolean hasGroupStage;
+            private Boolean hasKnockoutStage;
+            private List<String> knockoutRounds;
         }
         
         @Data
         public static class Stage {
-            private String stageId; // "group-stage", "round-of-16", etc.
-            private String stageName; // "Fase de Grupos", "Octavos de Final", etc.
-            private String type; // "groups" or "knockout"
-            private Boolean isActive; // Is this stage currently active?
-            private Boolean isCompleted; // Has this stage finished?
-            private Integer order; // Order of this stage (1, 2, 3, etc.)
-            
-            // For group-stage type
-            private List<GroupStage> groups; // Only used when type = "groups"
-            
-            // For knockout type (round-of-16, quarter-finals, etc.)
-            private List<Match> matches; // All matches in this stage (both groups and knockout use this)
-            
-            private List<String> qualifiedTeamIds; // Teams that advanced to next stage
+            private String stageId;
+            private String stageName;
+            private String type;
+            private Boolean isActive;
+            private Boolean isCompleted;
+            private Integer order;
+            private List<GroupStage> groups;
+            private List<Match> matches;
+            private List<String> qualifiedTeamIds;
         }
         
-        /**
-         * Group Stage - for phase 1 (groups)
-         * Example: Group A, Group B, etc. with 4 teams each, top 2 qualify
-         */
         @Data
         public static class GroupStage {
-            private String groupLetter; // "A", "B", "C", etc.
-            private String groupName; // "Grupo A"
-            private List<TeamScore> teams; // Teams in this group with their stats
-            private List<String> qualifiedTeamIds; // Top teams that qualify (sorted by points, goal difference, etc.)
-            private Integer teamsPerGroup; // Usually 4
-            private Integer teamsQualify; // Usually 2 (top 2)
-            private List<Match> matches; // All matches played in this group
+            private String groupLetter;
+            private String groupName;
+            private List<TeamScore> teams;
+            private List<String> qualifiedTeamIds;
+            private Integer teamsPerGroup;
+            private Integer teamsQualify;
+            private List<Match> matches;
         }
         
         /**
-         * Match - Universal match structure for both group stage and knockout rounds
-         * This allows registering individual match results
+         * Match - DEPRECATED: Real results should be in competitions_service
+         * This structure is kept for backward compatibility
          */
         @Data
         public static class Match {
-            private String matchId; // Unique match ID
-            private String matchNumber; // "1", "2", "3", etc. (within the stage/group)
-            private String stageId; // Which stage this match belongs to
-            private String groupLetter; // If group stage, which group (null for knockout)
-            
-            // Teams
+            private String matchId;
+            private String matchNumber;
+            private String stageId;
+            private String groupLetter;
             private String team1Id;
             private String team1Name;
             private String team1Flag;
@@ -170,69 +163,74 @@ public class Group {
             private String team2Name;
             private String team2Flag;
             
-            // Match result (real scores - only backend/admin can modify)
-            private Integer team1Score; // null if not played yet
-            private Integer team2Score; // null if not played yet
-            private String winnerTeamId; // null if not played yet (or if draw)
-            private String loserTeamId; // null if not played yet (or if draw)
-            private Boolean isDraw; // true if match ended in a draw
+            // DEPRECATED: Real results should be in competitions_service
+            private Integer team1Score;
+            private Integer team2Score;
+            private String winnerTeamId;
+            private String loserTeamId;
+            private Boolean isDraw;
             
-            // User prediction scores (frontend can modify these)
-            private Integer userTeam1Score; // User's predicted score for team1 (null if not predicted yet)
-            private Integer userTeam2Score; // User's predicted score for team2 (null if not predicted yet)
+            // User predictions (these can stay in groups)
+            private Integer userTeam1Score;
+            private Integer userTeam2Score;
+            private Boolean userExtraTime;
+            private Boolean userPenalties;
+            private Integer userPenaltiesTeam1Score;
+            private Integer userPenaltiesTeam2Score;
             
-            // Match metadata
-            private Date matchDate; // When the match is scheduled
-            private Date playedDate; // When the match was actually played
-            private Boolean isPlayed; // Has the match been played?
-            private String venue; // Stadium/venue name (optional)
-            private String status; // "scheduled", "in-progress", "finished", "postponed", "cancelled"
+            // Extra time and penalties (real results - should be in competitions)
+            private Boolean extraTime;
+            private Boolean penalties;
+            private Integer penaltiesTeam1Score;
+            private Integer penaltiesTeam2Score;
             
-            // For knockout matches
-            private String nextMatchId; // Which match does the winner advance to? (null for final)
-            private String nextStageId; // Which stage does the winner advance to?
+            private Date matchDate;
+            private Date playedDate;
+            private Boolean isPlayed;
+            private String venue;
+            private String status;
+            private String nextMatchId;
+            private String nextStageId;
             
-            // For group stage matches
-            // Use Object type to handle both Integer and Date from MongoDB
             @Field("matchday")
             @com.fasterxml.jackson.annotation.JsonIgnore
-            private Object matchdayInternal; // Internal field that can be Integer or Date
+            private Object matchdayInternal;
             
-            // Public getter that always returns Integer (or null)
             @com.fasterxml.jackson.annotation.JsonProperty("matchday")
             public Integer getMatchday() {
-                if (matchdayInternal == null) {
-                    return null;
-                }
-                if (matchdayInternal instanceof Integer) {
-                    return (Integer) matchdayInternal;
-                }
-                if (matchdayInternal instanceof Date) {
-                    // If it's a Date, log warning and return null
-                    // This shouldn't happen, but some old documents might have this
-                    System.err.println("⚠️ WARNING: matchday is a Date, expected Integer. Returning null.");
-                    return null;
-                }
-                if (matchdayInternal instanceof Number) {
-                    return ((Number) matchdayInternal).intValue();
-                }
-                // Try to parse as string
-                if (matchdayInternal instanceof String) {
-                    try {
-                        return Integer.parseInt((String) matchdayInternal);
-                    } catch (NumberFormatException e) {
-                        System.err.println("⚠️ WARNING: Cannot parse matchday as Integer: " + matchdayInternal);
-                        return null;
-                    }
-                }
+                if (matchdayInternal == null) return null;
+                if (matchdayInternal instanceof Integer) return (Integer) matchdayInternal;
+                if (matchdayInternal instanceof Number) return ((Number) matchdayInternal).intValue();
                 return null;
             }
             
-            // Public setter that accepts Integer
             public void setMatchday(Integer matchday) {
                 this.matchdayInternal = matchday;
             }
         }
+    }
+    
+    /**
+     * User Prediction - Contains ONLY user predictions for a match
+     * Real match results are stored in competitions_service
+     */
+    @Data
+    public static class UserPrediction {
+        private String matchId; // Reference to match in competitions
+        private String userId; // User who made this prediction
+        
+        // User prediction scores (frontend can modify these)
+        private Integer userTeam1Score; // User's predicted score for team1
+        private Integer userTeam2Score; // User's predicted score for team2
+        
+        // User predictions for extra time and penalties (only for knockout stages)
+        private Boolean userExtraTime; // User predicted extra time (only for knockout)
+        private Boolean userPenalties; // User predicted penalties (only for knockout)
+        private Integer userPenaltiesTeam1Score; // User's predicted penalties score for team1 (only for knockout)
+        private Integer userPenaltiesTeam2Score; // User's predicted penalties score for team2 (only for knockout)
+        
+        private Date predictedDate; // When the user made this prediction
+        private Integer points; // Points earned for this prediction (calculated after match is played)
     }
     
     /**

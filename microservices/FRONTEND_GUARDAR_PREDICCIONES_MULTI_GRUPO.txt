@@ -1,0 +1,1274 @@
+================================================================================
+DOCUMENTACIÓN FRONTEND: GUARDAR PREDICCIONES PARA TODOS LOS GRUPOS
+================================================================================
+
+RESUMEN
+================================================================================
+
+Cuando un usuario hace una predicción, esta se guarda UNA SOLA VEZ y se aplica 
+automáticamente a TODOS los grupos del mismo torneo (competition) a los que 
+pertenece el usuario.
+
+EJEMPLO:
+--------
+Usuario pertenece a 3 grupos del "FIFA Club World Cup":
+- Grupo "Los Mejores"
+- Grupo "Amigos del Fútbol"
+- Grupo "Oficina 2025"
+
+Usuario hace UNA predicción: Flamengo 2 - Chelsea 1
+
+El sistema AUTOMÁTICAMENTE:
+✅ Guarda la predicción una sola vez
+✅ La aplica a los 3 grupos
+✅ Calcula puntos para cada grupo (mismo resultado = mismos puntos)
+✅ Actualiza el scoreboard de cada grupo
+
+================================================================================
+ENDPOINT PARA GUARDAR PREDICCIÓN
+================================================================================
+
+POST /football-pool/v1/api/auth/{userId}/predictions
+
+Headers:
+--------
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+
+Body (JSON) - Para Fase de Grupos:
+------------------------------------
+{
+  "matchId": "group-d-match-3",
+  "team1Score": 2,
+  "team2Score": 1
+}
+
+Body (JSON) - Para Fases de Eliminación (Knockout):
+----------------------------------------------------
+{
+  "matchId": "round-of-16-1",
+  "team1Score": 1,
+  "team2Score": 1,
+  "userExtraTime": true,              // Opcional
+  "userPenalties": true,              // Opcional
+  "userPenaltiesTeam1Score": 4,        // Opcional
+  "userPenaltiesTeam2Score": 3         // Opcional
+}
+
+⚠️ IMPORTANTE:
+--------------
+❌ NO ENVIAR "groupId" - El backend determinará automáticamente todos los grupos
+✅ Solo enviar "matchId" y los scores
+✅ Si el usuario deja un input vacío, enviar 0
+
+================================================================================
+RESPUESTA DEL BACKEND
+================================================================================
+
+Respuesta exitosa (200):
+------------------------
+{
+  "message": "Prediction saved successfully",
+  "userId": "6908d0864077087454146d5c",
+  "matchId": "group-d-match-3",
+  "team1Score": 2,
+  "team2Score": 1,
+  "groupsApplied": [
+    {
+      "groupId": "6923da8daf258e4c81793b31",
+      "groupName": "Los Mejores",
+      "pointsCalculated": true,          // true si el partido ya se jugó
+      "points": 5,                       // Puntos ganados (si pointsCalculated = true)
+      "totalScore": 15                   // Score total del usuario en este grupo
+    },
+    {
+      "groupId": "6923da8daf258e4c81793b32",
+      "groupName": "Amigos del Fútbol",
+      "pointsCalculated": true,
+      "points": 5,
+      "totalScore": 20
+    },
+    {
+      "groupId": "6923da8daf258e4c81793b33",
+      "groupName": "Oficina 2025",
+      "pointsCalculated": false,         // false si el partido aún no se jugó
+      "points": 0,
+      "totalScore": 10
+    }
+  ]
+}
+
+Errores posibles:
+-----------------
+400: "All fields are required: userId, matchId, team1Score, team2Score"
+400: "User does not belong to any groups"
+400: "User does not belong to any groups for this match's competition"
+404: "Match not found in any of user's groups: {matchId}"
+401: No autenticado
+500: Error del servidor
+
+================================================================================
+CÓDIGO DE EJEMPLO (REACT/REACT NATIVE)
+================================================================================
+
+FUNCIÓN PARA GUARDAR PREDICCIÓN:
+----------------------------------
+const savePrediction = async (matchId, team1Score, team2Score, userExtraTime, userPenalties) => {
+  try {
+    // Validar que los campos requeridos estén presentes
+    if (!matchId) {
+      throw new Error('matchId es requerido');
+    }
+    
+    // Manejar inputs vacíos como 0
+    const body = {
+      matchId: matchId,
+      team1Score: team1Score === null || team1Score === undefined || team1Score === '' ? 0 : parseInt(team1Score),
+      team2Score: team2Score === null || team2Score === undefined || team2Score === '' ? 0 : parseInt(team2Score)
+    };
+    
+    // Validar que los scores sean números no negativos
+    if (body.team1Score < 0 || body.team2Score < 0) {
+      throw new Error('Los scores deben ser números >= 0');
+    }
+    
+    // Agregar campos opcionales solo si es fase de eliminación (knockout)
+    if (userExtraTime !== undefined && userExtraTime !== null) {
+      body.userExtraTime = userExtraTime;
+    }
+    if (userPenalties !== undefined && userPenalties !== null) {
+      body.userPenalties = userPenalties;
+    }
+    if (userPenaltiesTeam1Score !== undefined && userPenaltiesTeam1Score !== null) {
+      body.userPenaltiesTeam1Score = userPenaltiesTeam1Score;
+    }
+    if (userPenaltiesTeam2Score !== undefined && userPenaltiesTeam2Score !== null) {
+      body.userPenaltiesTeam2Score = userPenaltiesTeam2Score;
+    }
+    
+    console.log('📤 Enviando predicción:', body);
+    
+    const response = await fetch(
+      `http://localhost:8080/football-pool/v1/api/auth/${userId}/predictions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      }
+    );
+    
+    const result = await response.json();
+    
+    if (response.ok) {
+      console.log('✅ Predicción guardada exitosamente');
+      console.log('📊 Grupos afectados:', result.groupsApplied.length);
+      
+      // Separar grupos con puntos calculados y sin puntos
+      const groupsWithPoints = result.groupsApplied.filter(g => g.pointsCalculated);
+      const groupsWithoutPoints = result.groupsApplied.filter(g => !g.pointsCalculated);
+      
+      // Mostrar información de cada grupo
+      result.groupsApplied.forEach(groupResult => {
+        if (groupResult.pointsCalculated) {
+          console.log(`✅ Grupo "${groupResult.groupName}": ${groupResult.points} puntos (Total: ${groupResult.totalScore})`);
+        } else {
+          console.log(`⏳ Grupo "${groupResult.groupName}": Predicción guardada. Puntos se calcularán cuando el partido se juegue.`);
+        }
+      });
+      
+      // Mostrar mensaje al usuario
+      if (groupsWithPoints.length > 0) {
+        const totalPoints = groupsWithPoints.reduce((sum, g) => sum + g.points, 0);
+        alert(
+          `¡Predicción guardada en ${result.groupsApplied.length} grupos!\n\n` +
+          `Ganaste ${totalPoints} puntos en total.\n\n` +
+          `${groupsWithPoints.length} grupos con puntos calculados\n` +
+          `${groupsWithoutPoints.length} grupos esperando resultados`
+        );
+      } else {
+        alert(
+          `Predicción guardada en ${result.groupsApplied.length} grupos.\n\n` +
+          `Los puntos se calcularán automáticamente cuando el partido se juegue.`
+        );
+      }
+      
+      // Si se calcularon puntos, refrescar los grupos para actualizar scoreboards
+      if (groupsWithPoints.length > 0) {
+        // Llamar a tu función para refrescar grupos
+        refreshGroups();
+      }
+      
+      return result;
+    } else {
+      // Manejar errores
+      let errorMessage = 'Error al guardar la predicción';
+      
+      if (result.error) {
+        errorMessage = result.error;
+        
+        // Mensajes específicos para errores comunes
+        if (result.error.includes('does not belong to any groups')) {
+          errorMessage = 'No perteneces a ningún grupo de este torneo. Únete a un grupo primero.';
+        } else if (result.error.includes('Match not found')) {
+          errorMessage = 'Este partido no está disponible en ninguno de tus grupos.';
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    console.error('❌ Error saving prediction:', error);
+    alert('Error al guardar la predicción: ' + error.message);
+    throw error;
+  }
+};
+
+USAR LA FUNCIÓN:
+----------------
+// Ejemplo: Usuario hace una predicción desde cualquier grupo
+await savePrediction(
+  "group-d-match-3",  // matchId
+  2,                  // team1Score (Flamengo)
+  1                   // team2Score (Chelsea)
+);
+
+// La predicción se aplicará automáticamente a TODOS los grupos del mismo torneo
+
+================================================================================
+EJEMPLO DE COMPONENTE COMPLETO (REACT)
+================================================================================
+
+import React, { useState } from 'react';
+
+const PredictionForm = ({ matchId, matchInfo, userId, userToken, onSuccess }) => {
+  const [team1Score, setTeam1Score] = useState('');
+  const [team2Score, setTeam2Score] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      // Validar inputs
+      const score1 = team1Score === '' ? 0 : parseInt(team1Score);
+      const score2 = team2Score === '' ? 0 : parseInt(team2Score);
+
+      if (isNaN(score1) || score1 < 0) {
+        throw new Error('Score del equipo 1 debe ser un número >= 0');
+      }
+      if (isNaN(score2) || score2 < 0) {
+        throw new Error('Score del equipo 2 debe ser un número >= 0');
+      }
+
+      // Llamar a la función de guardar predicción
+      const result = await savePrediction(matchId, score1, score2);
+
+      // Si hay callback de éxito, llamarlo
+      if (onSuccess) {
+        onSuccess(result);
+      }
+
+      // Limpiar formulario
+      setTeam1Score('');
+      setTeam2Score('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label>{matchInfo.team1Name}</label>
+        <input
+          type="number"
+          min="0"
+          value={team1Score}
+          onChange={(e) => setTeam1Score(e.target.value)}
+          placeholder="0"
+        />
+      </div>
+
+      <div>
+        <label>vs</label>
+      </div>
+
+      <div>
+        <label>{matchInfo.team2Name}</label>
+        <input
+          type="number"
+          min="0"
+          value={team2Score}
+          onChange={(e) => setTeam2Score(e.target.value)}
+          placeholder="0"
+        />
+      </div>
+
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+
+      <button type="submit" disabled={loading}>
+        {loading ? 'Guardando...' : 'Guardar Predicción'}
+      </button>
+
+      <div style={{ fontSize: '12px', color: 'gray', marginTop: '10px' }}>
+        ℹ️ Esta predicción se aplicará a todos tus grupos del mismo torneo
+      </div>
+    </form>
+  );
+};
+
+================================================================================
+FLUJO PASO A PASO
+================================================================================
+
+PASO 1: Usuario ve un partido
+------------------------------
+- Usuario está viendo cualquier grupo (ej: "Los Mejores")
+- Ve el partido: Flamengo vs Chelsea
+- matchId: "group-d-match-3"
+
+PASO 2: Usuario hace la predicción
+-----------------------------------
+- Usuario ingresa: Flamengo 2 - Chelsea 1
+- Frontend llama a savePrediction("group-d-match-3", 2, 1)
+- Frontend NO envía groupId
+
+PASO 3: Backend procesa automáticamente
+----------------------------------------
+1. Backend busca el partido en los grupos del usuario
+2. Identifica el torneo: "FIFA Club World Cup" (competitionId: "club-world-cup", category: "fifaOfficialClubCups")
+3. Busca TODOS los grupos del usuario en ese mismo torneo:
+   - "Los Mejores"
+   - "Amigos del Fútbol"
+   - "Oficina 2025"
+4. Guarda la predicción UNA vez
+5. Aplica la predicción a los 3 grupos
+6. Si el partido ya se jugó, calcula puntos (ej: 5 puntos)
+7. Actualiza scoreboards de los 3 grupos
+
+PASO 4: Frontend recibe respuesta
+----------------------------------
+{
+  "message": "Prediction saved successfully",
+  "groupsApplied": [
+    { "groupId": "...", "groupName": "Los Mejores", "points": 5, "totalScore": 15 },
+    { "groupId": "...", "groupName": "Amigos del Fútbol", "points": 5, "totalScore": 20 },
+    { "groupId": "...", "groupName": "Oficina 2025", "points": 0, "totalScore": 10 }
+  ]
+}
+
+PASO 5: Frontend muestra resultado
+----------------------------------
+- Muestra: "Predicción guardada en 3 grupos"
+- Muestra puntos ganados si el partido ya se jugó
+- Refresca grupos para actualizar scoreboards
+
+================================================================================
+VALIDACIONES EN EL FRONTEND
+================================================================================
+
+ANTES DE ENVIAR:
+----------------
+✅ matchId debe estar presente y no estar vacío
+✅ team1Score debe ser un número (puede ser 0 si el input está vacío)
+✅ team2Score debe ser un número (puede ser 0 si el input está vacío)
+✅ Ambos scores deben ser >= 0 (números no negativos)
+✅ Campos de knockout solo se envían si están presentes (opcionales)
+
+CÓDIGO DE VALIDACIÓN:
+---------------------
+const validatePrediction = (matchId, team1Score, team2Score) => {
+  const errors = [];
+  
+  if (!matchId || matchId.trim() === '') {
+    errors.push('matchId es requerido');
+  }
+  
+  const score1 = team1Score === '' || team1Score === null ? 0 : parseInt(team1Score);
+  const score2 = team2Score === '' || team2Score === null ? 0 : parseInt(team2Score);
+  
+  if (isNaN(score1) || score1 < 0) {
+    errors.push('team1Score debe ser un número >= 0');
+  }
+  
+  if (isNaN(score2) || score2 < 0) {
+    errors.push('team2Score debe ser un número >= 0');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors: errors,
+    normalizedScores: { team1Score: score1, team2Score: score2 }
+  };
+};
+
+// Usar antes de enviar
+const validation = validatePrediction(matchId, team1Score, team2Score);
+if (!validation.isValid) {
+  alert('Errores de validación:\n' + validation.errors.join('\n'));
+  return;
+}
+
+// Usar los scores normalizados
+await savePrediction(matchId, validation.normalizedScores.team1Score, validation.normalizedScores.team2Score);
+
+================================================================================
+MANEJO DE RESPUESTA
+================================================================================
+
+MOSTRAR INFORMACIÓN DE GRUPOS AFECTADOS:
+-----------------------------------------
+const displayGroupsApplied = (result) => {
+  const { groupsApplied } = result;
+  
+  // Agrupar por estado
+  const withPoints = groupsApplied.filter(g => g.pointsCalculated);
+  const withoutPoints = groupsApplied.filter(g => !g.pointsCalculated);
+  
+  return (
+    <div>
+      <h3>Predicción guardada en {groupsApplied.length} grupos</h3>
+      
+      {withPoints.length > 0 && (
+        <div>
+          <h4>Grupos con puntos calculados:</h4>
+          {withPoints.map(group => (
+            <div key={group.groupId}>
+              <strong>{group.groupName}</strong>
+              <p>{group.points} puntos (Total: {group.totalScore})</p>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {withoutPoints.length > 0 && (
+        <div>
+          <h4>Grupos esperando resultados:</h4>
+          {withoutPoints.map(group => (
+            <div key={group.groupId}>
+              <strong>{group.groupName}</strong>
+              <p>Puntos se calcularán cuando el partido se juegue</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+REFRESCAR GRUPOS DESPUÉS DE GUARDAR:
+------------------------------------
+const handlePredictionSaved = async (result) => {
+  // Mostrar información
+  displayGroupsApplied(result);
+  
+  // Si se calcularon puntos, refrescar grupos para actualizar scoreboards
+  const groupsWithPoints = result.groupsApplied.filter(g => g.pointsCalculated);
+  if (groupsWithPoints.length > 0) {
+    // Refrescar la lista de grupos
+    await refreshGroups();
+    
+    // O refrescar grupos específicos
+    result.groupsApplied.forEach(group => {
+      refreshGroup(group.groupId);
+    });
+  }
+};
+
+================================================================================
+CASOS ESPECIALES Y MANEJO DE ERRORES
+================================================================================
+
+CASO 1: Usuario no pertenece a ningún grupo del torneo
+--------------------------------------------------------
+Error: "User does not belong to any groups for this match's competition"
+
+Manejo:
+if (result.error && result.error.includes("does not belong to any groups for this match")) {
+  alert('No perteneces a ningún grupo de este torneo.\n\nÚnete a un grupo primero para hacer predicciones.');
+  // Redirigir a página de grupos o mostrar opción para unirse
+}
+
+CASO 2: Partido no encontrado
+------------------------------
+Error: "Match not found in any of user's groups: {matchId}"
+
+Manejo:
+if (result.error && result.error.includes("Match not found")) {
+  alert('Este partido no está disponible en ninguno de tus grupos.');
+  // Ocultar formulario de predicción o mostrar mensaje
+}
+
+CASO 3: Usuario sin grupos
+---------------------------
+Error: "User does not belong to any groups"
+
+Manejo:
+if (result.error && result.error.includes("does not belong to any groups")) {
+  alert('No perteneces a ningún grupo.\n\nCrea o únete a un grupo primero.');
+  // Redirigir a página de creación/unión de grupos
+}
+
+CASO 4: Inputs vacíos
+---------------------
+// Si el usuario deja un input vacío, enviar 0
+const team1Score = team1ScoreInput === '' || team1ScoreInput === null ? 0 : parseInt(team1ScoreInput);
+const team2Score = team2ScoreInput === '' || team2ScoreInput === null ? 0 : parseInt(team2ScoreInput);
+
+================================================================================
+EJEMPLOS DE REQUEST
+================================================================================
+
+EJEMPLO 1: Predicción simple (fase de grupos)
+----------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+  Content-Type: application/json
+
+Body:
+{
+  "matchId": "group-d-match-3",
+  "team1Score": 2,
+  "team2Score": 1
+}
+
+EJEMPLO 2: Predicción con tiempo extra y penales (knockout)
+------------------------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+  Content-Type: application/json
+
+Body:
+{
+  "matchId": "round-of-16-1",
+  "team1Score": 1,
+  "team2Score": 1,
+  "userExtraTime": true,
+  "userPenalties": true,
+  "userPenaltiesTeam1Score": 4,
+  "userPenaltiesTeam2Score": 3
+}
+
+EJEMPLO 3: Predicción con valores en 0 (inputs vacíos)
+--------------------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+  Content-Type: application/json
+
+Body:
+{
+  "matchId": "group-a-match-1",
+  "team1Score": 0,
+  "team2Score": 0
+}
+
+================================================================================
+PUNTOS CLAVE PARA EL FRONTEND
+================================================================================
+
+✅ QUÉ HACER:
+-------------
+1. NO enviar "groupId" en el body
+2. Solo enviar "matchId", "team1Score", "team2Score"
+3. Manejar inputs vacíos como 0
+4. Validar que scores sean números >= 0
+5. Mostrar información de "groupsApplied" al usuario
+6. Refrescar grupos si "pointsCalculated = true" en algún grupo
+
+❌ QUÉ NO HACER:
+----------------
+1. NO enviar "groupId" (el backend lo determina automáticamente)
+2. NO calcular puntos en el frontend (el backend lo hace automáticamente)
+3. NO actualizar scoreboards manualmente (el backend lo hace automáticamente)
+4. NO asumir que solo se aplica a un grupo (se aplica a TODOS los grupos del mismo torneo)
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+📌 ENDPOINT:
+   POST /football-pool/v1/api/auth/{userId}/predictions
+
+📌 BODY (NO incluir groupId):
+   {
+     "matchId": "group-d-match-3",
+     "team1Score": 2,
+     "team2Score": 1
+   }
+
+📌 RESPUESTA:
+   {
+     "message": "Prediction saved successfully",
+     "groupsApplied": [
+       {
+         "groupId": "...",
+         "groupName": "Los Mejores",
+         "pointsCalculated": true,
+         "points": 5,
+         "totalScore": 15
+       },
+       // ... más grupos
+     ]
+   }
+
+📌 COMPORTAMIENTO:
+   - Una predicción se aplica a TODOS los grupos del mismo torneo
+   - Los puntos se calculan automáticamente si el partido ya se jugó
+   - Los scoreboards se actualizan automáticamente
+   - El frontend solo necesita enviar la predicción y mostrar el resultado
+
+================================================================================
+FIN DE DOCUMENTACIÓN
+================================================================================
+
+DOCUMENTACIÓN FRONTEND: GUARDAR PREDICCIONES PARA TODOS LOS GRUPOS
+================================================================================
+
+RESUMEN
+================================================================================
+
+Cuando un usuario hace una predicción, esta se guarda UNA SOLA VEZ y se aplica 
+automáticamente a TODOS los grupos del mismo torneo (competition) a los que 
+pertenece el usuario.
+
+EJEMPLO:
+--------
+Usuario pertenece a 3 grupos del "FIFA Club World Cup":
+- Grupo "Los Mejores"
+- Grupo "Amigos del Fútbol"
+- Grupo "Oficina 2025"
+
+Usuario hace UNA predicción: Flamengo 2 - Chelsea 1
+
+El sistema AUTOMÁTICAMENTE:
+✅ Guarda la predicción una sola vez
+✅ La aplica a los 3 grupos
+✅ Calcula puntos para cada grupo (mismo resultado = mismos puntos)
+✅ Actualiza el scoreboard de cada grupo
+
+================================================================================
+ENDPOINT PARA GUARDAR PREDICCIÓN
+================================================================================
+
+POST /football-pool/v1/api/auth/{userId}/predictions
+
+Headers:
+--------
+Authorization: Bearer {jwt_token}
+Content-Type: application/json
+
+Body (JSON) - Para Fase de Grupos:
+------------------------------------
+{
+  "matchId": "group-d-match-3",
+  "team1Score": 2,
+  "team2Score": 1
+}
+
+Body (JSON) - Para Fases de Eliminación (Knockout):
+----------------------------------------------------
+{
+  "matchId": "round-of-16-1",
+  "team1Score": 1,
+  "team2Score": 1,
+  "userExtraTime": true,              // Opcional
+  "userPenalties": true,              // Opcional
+  "userPenaltiesTeam1Score": 4,        // Opcional
+  "userPenaltiesTeam2Score": 3         // Opcional
+}
+
+⚠️ IMPORTANTE:
+--------------
+❌ NO ENVIAR "groupId" - El backend determinará automáticamente todos los grupos
+✅ Solo enviar "matchId" y los scores
+✅ Si el usuario deja un input vacío, enviar 0
+
+================================================================================
+RESPUESTA DEL BACKEND
+================================================================================
+
+Respuesta exitosa (200):
+------------------------
+{
+  "message": "Prediction saved successfully",
+  "userId": "6908d0864077087454146d5c",
+  "matchId": "group-d-match-3",
+  "team1Score": 2,
+  "team2Score": 1,
+  "groupsApplied": [
+    {
+      "groupId": "6923da8daf258e4c81793b31",
+      "groupName": "Los Mejores",
+      "pointsCalculated": true,          // true si el partido ya se jugó
+      "points": 5,                       // Puntos ganados (si pointsCalculated = true)
+      "totalScore": 15                   // Score total del usuario en este grupo
+    },
+    {
+      "groupId": "6923da8daf258e4c81793b32",
+      "groupName": "Amigos del Fútbol",
+      "pointsCalculated": true,
+      "points": 5,
+      "totalScore": 20
+    },
+    {
+      "groupId": "6923da8daf258e4c81793b33",
+      "groupName": "Oficina 2025",
+      "pointsCalculated": false,         // false si el partido aún no se jugó
+      "points": 0,
+      "totalScore": 10
+    }
+  ]
+}
+
+Errores posibles:
+-----------------
+400: "All fields are required: userId, matchId, team1Score, team2Score"
+400: "User does not belong to any groups"
+400: "User does not belong to any groups for this match's competition"
+404: "Match not found in any of user's groups: {matchId}"
+401: No autenticado
+500: Error del servidor
+
+================================================================================
+CÓDIGO DE EJEMPLO (REACT/REACT NATIVE)
+================================================================================
+
+FUNCIÓN PARA GUARDAR PREDICCIÓN:
+----------------------------------
+const savePrediction = async (matchId, team1Score, team2Score, userExtraTime, userPenalties) => {
+  try {
+    // Validar que los campos requeridos estén presentes
+    if (!matchId) {
+      throw new Error('matchId es requerido');
+    }
+    
+    // Manejar inputs vacíos como 0
+    const body = {
+      matchId: matchId,
+      team1Score: team1Score === null || team1Score === undefined || team1Score === '' ? 0 : parseInt(team1Score),
+      team2Score: team2Score === null || team2Score === undefined || team2Score === '' ? 0 : parseInt(team2Score)
+    };
+    
+    // Validar que los scores sean números no negativos
+    if (body.team1Score < 0 || body.team2Score < 0) {
+      throw new Error('Los scores deben ser números >= 0');
+    }
+    
+    // Agregar campos opcionales solo si es fase de eliminación (knockout)
+    if (userExtraTime !== undefined && userExtraTime !== null) {
+      body.userExtraTime = userExtraTime;
+    }
+    if (userPenalties !== undefined && userPenalties !== null) {
+      body.userPenalties = userPenalties;
+    }
+    if (userPenaltiesTeam1Score !== undefined && userPenaltiesTeam1Score !== null) {
+      body.userPenaltiesTeam1Score = userPenaltiesTeam1Score;
+    }
+    if (userPenaltiesTeam2Score !== undefined && userPenaltiesTeam2Score !== null) {
+      body.userPenaltiesTeam2Score = userPenaltiesTeam2Score;
+    }
+    
+    console.log('📤 Enviando predicción:', body);
+    
+    const response = await fetch(
+      `http://localhost:8080/football-pool/v1/api/auth/${userId}/predictions`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      }
+    );
+    
+    const result = await response.json();
+    
+    if (response.ok) {
+      console.log('✅ Predicción guardada exitosamente');
+      console.log('📊 Grupos afectados:', result.groupsApplied.length);
+      
+      // Separar grupos con puntos calculados y sin puntos
+      const groupsWithPoints = result.groupsApplied.filter(g => g.pointsCalculated);
+      const groupsWithoutPoints = result.groupsApplied.filter(g => !g.pointsCalculated);
+      
+      // Mostrar información de cada grupo
+      result.groupsApplied.forEach(groupResult => {
+        if (groupResult.pointsCalculated) {
+          console.log(`✅ Grupo "${groupResult.groupName}": ${groupResult.points} puntos (Total: ${groupResult.totalScore})`);
+        } else {
+          console.log(`⏳ Grupo "${groupResult.groupName}": Predicción guardada. Puntos se calcularán cuando el partido se juegue.`);
+        }
+      });
+      
+      // Mostrar mensaje al usuario
+      if (groupsWithPoints.length > 0) {
+        const totalPoints = groupsWithPoints.reduce((sum, g) => sum + g.points, 0);
+        alert(
+          `¡Predicción guardada en ${result.groupsApplied.length} grupos!\n\n` +
+          `Ganaste ${totalPoints} puntos en total.\n\n` +
+          `${groupsWithPoints.length} grupos con puntos calculados\n` +
+          `${groupsWithoutPoints.length} grupos esperando resultados`
+        );
+      } else {
+        alert(
+          `Predicción guardada en ${result.groupsApplied.length} grupos.\n\n` +
+          `Los puntos se calcularán automáticamente cuando el partido se juegue.`
+        );
+      }
+      
+      // Si se calcularon puntos, refrescar los grupos para actualizar scoreboards
+      if (groupsWithPoints.length > 0) {
+        // Llamar a tu función para refrescar grupos
+        refreshGroups();
+      }
+      
+      return result;
+    } else {
+      // Manejar errores
+      let errorMessage = 'Error al guardar la predicción';
+      
+      if (result.error) {
+        errorMessage = result.error;
+        
+        // Mensajes específicos para errores comunes
+        if (result.error.includes('does not belong to any groups')) {
+          errorMessage = 'No perteneces a ningún grupo de este torneo. Únete a un grupo primero.';
+        } else if (result.error.includes('Match not found')) {
+          errorMessage = 'Este partido no está disponible en ninguno de tus grupos.';
+        }
+      }
+      
+      throw new Error(errorMessage);
+    }
+  } catch (error) {
+    console.error('❌ Error saving prediction:', error);
+    alert('Error al guardar la predicción: ' + error.message);
+    throw error;
+  }
+};
+
+USAR LA FUNCIÓN:
+----------------
+// Ejemplo: Usuario hace una predicción desde cualquier grupo
+await savePrediction(
+  "group-d-match-3",  // matchId
+  2,                  // team1Score (Flamengo)
+  1                   // team2Score (Chelsea)
+);
+
+// La predicción se aplicará automáticamente a TODOS los grupos del mismo torneo
+
+================================================================================
+EJEMPLO DE COMPONENTE COMPLETO (REACT)
+================================================================================
+
+import React, { useState } from 'react';
+
+const PredictionForm = ({ matchId, matchInfo, userId, userToken, onSuccess }) => {
+  const [team1Score, setTeam1Score] = useState('');
+  const [team2Score, setTeam2Score] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      // Validar inputs
+      const score1 = team1Score === '' ? 0 : parseInt(team1Score);
+      const score2 = team2Score === '' ? 0 : parseInt(team2Score);
+
+      if (isNaN(score1) || score1 < 0) {
+        throw new Error('Score del equipo 1 debe ser un número >= 0');
+      }
+      if (isNaN(score2) || score2 < 0) {
+        throw new Error('Score del equipo 2 debe ser un número >= 0');
+      }
+
+      // Llamar a la función de guardar predicción
+      const result = await savePrediction(matchId, score1, score2);
+
+      // Si hay callback de éxito, llamarlo
+      if (onSuccess) {
+        onSuccess(result);
+      }
+
+      // Limpiar formulario
+      setTeam1Score('');
+      setTeam2Score('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div>
+        <label>{matchInfo.team1Name}</label>
+        <input
+          type="number"
+          min="0"
+          value={team1Score}
+          onChange={(e) => setTeam1Score(e.target.value)}
+          placeholder="0"
+        />
+      </div>
+
+      <div>
+        <label>vs</label>
+      </div>
+
+      <div>
+        <label>{matchInfo.team2Name}</label>
+        <input
+          type="number"
+          min="0"
+          value={team2Score}
+          onChange={(e) => setTeam2Score(e.target.value)}
+          placeholder="0"
+        />
+      </div>
+
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+
+      <button type="submit" disabled={loading}>
+        {loading ? 'Guardando...' : 'Guardar Predicción'}
+      </button>
+
+      <div style={{ fontSize: '12px', color: 'gray', marginTop: '10px' }}>
+        ℹ️ Esta predicción se aplicará a todos tus grupos del mismo torneo
+      </div>
+    </form>
+  );
+};
+
+================================================================================
+FLUJO PASO A PASO
+================================================================================
+
+PASO 1: Usuario ve un partido
+------------------------------
+- Usuario está viendo cualquier grupo (ej: "Los Mejores")
+- Ve el partido: Flamengo vs Chelsea
+- matchId: "group-d-match-3"
+
+PASO 2: Usuario hace la predicción
+-----------------------------------
+- Usuario ingresa: Flamengo 2 - Chelsea 1
+- Frontend llama a savePrediction("group-d-match-3", 2, 1)
+- Frontend NO envía groupId
+
+PASO 3: Backend procesa automáticamente
+----------------------------------------
+1. Backend busca el partido en los grupos del usuario
+2. Identifica el torneo: "FIFA Club World Cup" (competitionId: "club-world-cup", category: "fifaOfficialClubCups")
+3. Busca TODOS los grupos del usuario en ese mismo torneo:
+   - "Los Mejores"
+   - "Amigos del Fútbol"
+   - "Oficina 2025"
+4. Guarda la predicción UNA vez
+5. Aplica la predicción a los 3 grupos
+6. Si el partido ya se jugó, calcula puntos (ej: 5 puntos)
+7. Actualiza scoreboards de los 3 grupos
+
+PASO 4: Frontend recibe respuesta
+----------------------------------
+{
+  "message": "Prediction saved successfully",
+  "groupsApplied": [
+    { "groupId": "...", "groupName": "Los Mejores", "points": 5, "totalScore": 15 },
+    { "groupId": "...", "groupName": "Amigos del Fútbol", "points": 5, "totalScore": 20 },
+    { "groupId": "...", "groupName": "Oficina 2025", "points": 0, "totalScore": 10 }
+  ]
+}
+
+PASO 5: Frontend muestra resultado
+----------------------------------
+- Muestra: "Predicción guardada en 3 grupos"
+- Muestra puntos ganados si el partido ya se jugó
+- Refresca grupos para actualizar scoreboards
+
+================================================================================
+VALIDACIONES EN EL FRONTEND
+================================================================================
+
+ANTES DE ENVIAR:
+----------------
+✅ matchId debe estar presente y no estar vacío
+✅ team1Score debe ser un número (puede ser 0 si el input está vacío)
+✅ team2Score debe ser un número (puede ser 0 si el input está vacío)
+✅ Ambos scores deben ser >= 0 (números no negativos)
+✅ Campos de knockout solo se envían si están presentes (opcionales)
+
+CÓDIGO DE VALIDACIÓN:
+---------------------
+const validatePrediction = (matchId, team1Score, team2Score) => {
+  const errors = [];
+  
+  if (!matchId || matchId.trim() === '') {
+    errors.push('matchId es requerido');
+  }
+  
+  const score1 = team1Score === '' || team1Score === null ? 0 : parseInt(team1Score);
+  const score2 = team2Score === '' || team2Score === null ? 0 : parseInt(team2Score);
+  
+  if (isNaN(score1) || score1 < 0) {
+    errors.push('team1Score debe ser un número >= 0');
+  }
+  
+  if (isNaN(score2) || score2 < 0) {
+    errors.push('team2Score debe ser un número >= 0');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors: errors,
+    normalizedScores: { team1Score: score1, team2Score: score2 }
+  };
+};
+
+// Usar antes de enviar
+const validation = validatePrediction(matchId, team1Score, team2Score);
+if (!validation.isValid) {
+  alert('Errores de validación:\n' + validation.errors.join('\n'));
+  return;
+}
+
+// Usar los scores normalizados
+await savePrediction(matchId, validation.normalizedScores.team1Score, validation.normalizedScores.team2Score);
+
+================================================================================
+MANEJO DE RESPUESTA
+================================================================================
+
+MOSTRAR INFORMACIÓN DE GRUPOS AFECTADOS:
+-----------------------------------------
+const displayGroupsApplied = (result) => {
+  const { groupsApplied } = result;
+  
+  // Agrupar por estado
+  const withPoints = groupsApplied.filter(g => g.pointsCalculated);
+  const withoutPoints = groupsApplied.filter(g => !g.pointsCalculated);
+  
+  return (
+    <div>
+      <h3>Predicción guardada en {groupsApplied.length} grupos</h3>
+      
+      {withPoints.length > 0 && (
+        <div>
+          <h4>Grupos con puntos calculados:</h4>
+          {withPoints.map(group => (
+            <div key={group.groupId}>
+              <strong>{group.groupName}</strong>
+              <p>{group.points} puntos (Total: {group.totalScore})</p>
+            </div>
+          ))}
+        </div>
+      )}
+      
+      {withoutPoints.length > 0 && (
+        <div>
+          <h4>Grupos esperando resultados:</h4>
+          {withoutPoints.map(group => (
+            <div key={group.groupId}>
+              <strong>{group.groupName}</strong>
+              <p>Puntos se calcularán cuando el partido se juegue</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+REFRESCAR GRUPOS DESPUÉS DE GUARDAR:
+------------------------------------
+const handlePredictionSaved = async (result) => {
+  // Mostrar información
+  displayGroupsApplied(result);
+  
+  // Si se calcularon puntos, refrescar grupos para actualizar scoreboards
+  const groupsWithPoints = result.groupsApplied.filter(g => g.pointsCalculated);
+  if (groupsWithPoints.length > 0) {
+    // Refrescar la lista de grupos
+    await refreshGroups();
+    
+    // O refrescar grupos específicos
+    result.groupsApplied.forEach(group => {
+      refreshGroup(group.groupId);
+    });
+  }
+};
+
+================================================================================
+CASOS ESPECIALES Y MANEJO DE ERRORES
+================================================================================
+
+CASO 1: Usuario no pertenece a ningún grupo del torneo
+--------------------------------------------------------
+Error: "User does not belong to any groups for this match's competition"
+
+Manejo:
+if (result.error && result.error.includes("does not belong to any groups for this match")) {
+  alert('No perteneces a ningún grupo de este torneo.\n\nÚnete a un grupo primero para hacer predicciones.');
+  // Redirigir a página de grupos o mostrar opción para unirse
+}
+
+CASO 2: Partido no encontrado
+------------------------------
+Error: "Match not found in any of user's groups: {matchId}"
+
+Manejo:
+if (result.error && result.error.includes("Match not found")) {
+  alert('Este partido no está disponible en ninguno de tus grupos.');
+  // Ocultar formulario de predicción o mostrar mensaje
+}
+
+CASO 3: Usuario sin grupos
+---------------------------
+Error: "User does not belong to any groups"
+
+Manejo:
+if (result.error && result.error.includes("does not belong to any groups")) {
+  alert('No perteneces a ningún grupo.\n\nCrea o únete a un grupo primero.');
+  // Redirigir a página de creación/unión de grupos
+}
+
+CASO 4: Inputs vacíos
+---------------------
+// Si el usuario deja un input vacío, enviar 0
+const team1Score = team1ScoreInput === '' || team1ScoreInput === null ? 0 : parseInt(team1ScoreInput);
+const team2Score = team2ScoreInput === '' || team2ScoreInput === null ? 0 : parseInt(team2ScoreInput);
+
+================================================================================
+EJEMPLOS DE REQUEST
+================================================================================
+
+EJEMPLO 1: Predicción simple (fase de grupos)
+----------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+  Content-Type: application/json
+
+Body:
+{
+  "matchId": "group-d-match-3",
+  "team1Score": 2,
+  "team2Score": 1
+}
+
+EJEMPLO 2: Predicción con tiempo extra y penales (knockout)
+------------------------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+  Content-Type: application/json
+
+Body:
+{
+  "matchId": "round-of-16-1",
+  "team1Score": 1,
+  "team2Score": 1,
+  "userExtraTime": true,
+  "userPenalties": true,
+  "userPenaltiesTeam1Score": 4,
+  "userPenaltiesTeam2Score": 3
+}
+
+EJEMPLO 3: Predicción con valores en 0 (inputs vacíos)
+--------------------------------------------------------
+POST /football-pool/v1/api/auth/6908d0864077087454146d5c/predictions
+
+Headers:
+  Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...
+  Content-Type: application/json
+
+Body:
+{
+  "matchId": "group-a-match-1",
+  "team1Score": 0,
+  "team2Score": 0
+}
+
+================================================================================
+PUNTOS CLAVE PARA EL FRONTEND
+================================================================================
+
+✅ QUÉ HACER:
+-------------
+1. NO enviar "groupId" en el body
+2. Solo enviar "matchId", "team1Score", "team2Score"
+3. Manejar inputs vacíos como 0
+4. Validar que scores sean números >= 0
+5. Mostrar información de "groupsApplied" al usuario
+6. Refrescar grupos si "pointsCalculated = true" en algún grupo
+
+❌ QUÉ NO HACER:
+----------------
+1. NO enviar "groupId" (el backend lo determina automáticamente)
+2. NO calcular puntos en el frontend (el backend lo hace automáticamente)
+3. NO actualizar scoreboards manualmente (el backend lo hace automáticamente)
+4. NO asumir que solo se aplica a un grupo (se aplica a TODOS los grupos del mismo torneo)
+
+================================================================================
+RESUMEN EJECUTIVO
+================================================================================
+
+📌 ENDPOINT:
+   POST /football-pool/v1/api/auth/{userId}/predictions
+
+📌 BODY (NO incluir groupId):
+   {
+     "matchId": "group-d-match-3",
+     "team1Score": 2,
+     "team2Score": 1
+   }
+
+📌 RESPUESTA:
+   {
+     "message": "Prediction saved successfully",
+     "groupsApplied": [
+       {
+         "groupId": "...",
+         "groupName": "Los Mejores",
+         "pointsCalculated": true,
+         "points": 5,
+         "totalScore": 15
+       },
+       // ... más grupos
+     ]
+   }
+
+📌 COMPORTAMIENTO:
+   - Una predicción se aplica a TODOS los grupos del mismo torneo
+   - Los puntos se calculan automáticamente si el partido ya se jugó
+   - Los scoreboards se actualizan automáticamente
+   - El frontend solo necesita enviar la predicción y mostrar el resultado
+
+================================================================================
+FIN DE DOCUMENTACIÓN
+================================================================================
+
+

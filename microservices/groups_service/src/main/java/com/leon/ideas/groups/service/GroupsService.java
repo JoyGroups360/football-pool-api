@@ -3,12 +3,15 @@ package com.leon.ideas.groups.service;
 import com.leon.ideas.groups.model.Group;
 import com.leon.ideas.groups.repository.GroupsRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.Calendar;
+import java.util.Date;
+import org.bson.Document;
 
 @Service
 public class GroupsService {
@@ -27,6 +30,9 @@ public class GroupsService {
 
     @Autowired
     private AuthClientService authClientService;
+    
+    @Value("${service.token}")
+    private String serviceToken;
 
     /**
      * Create a new group
@@ -222,26 +228,20 @@ public class GroupsService {
             }
             group.setInvitedEmails(invitedEmailsList);
             
-            // Initialize scoreboard
+            // Initialize scoreboard with users
             Group.Scoreboard scoreboard = new Group.Scoreboard();
-            List<Group.Scoreboard.TeamScore> teamScores = new ArrayList<>();
+            List<Group.Scoreboard.UserScore> userScores = new ArrayList<>();
             
-            for (Map<String, Object> team : qualifiedTeams) {
-                Group.Scoreboard.TeamScore teamScore = new Group.Scoreboard.TeamScore();
-                teamScore.setTeamId((String) team.get("id"));
-                teamScore.setTeamName((String) team.get("name"));
-                teamScore.setTeamFlag((String) team.get("flag"));
-                teamScore.setPlayed(0);
-                teamScore.setWon(0);
-                teamScore.setDrawn(0);
-                teamScore.setLost(0);
-                teamScore.setGoalsFor(0);
-                teamScore.setGoalsAgainst(0);
-                teamScore.setGoalDifference(0);
-                teamScore.setPoints(0);
-                teamScores.add(teamScore);
-            }
-            scoreboard.setTeams(teamScores);
+            // Add creator to scoreboard
+            Group.Scoreboard.UserScore creatorScore = new Group.Scoreboard.UserScore();
+            creatorScore.setUserId(userId);
+            creatorScore.setUserName(creatorUser.getNombre());
+            creatorScore.setScore(0);
+            creatorScore.setPosition(1);
+            creatorScore.setLastUpdated(new Date());
+            userScores.add(creatorScore);
+            
+            scoreboard.setUsers(userScores);
             group.setScoreboard(scoreboard);
             
             // Initialize tournament structure with groups and matches
@@ -872,7 +872,7 @@ public class GroupsService {
             String userName = userInfo.get("name") != null ? userInfo.get("name").toString() : 
                             (userInfo.get("firstName") != null ? userInfo.get("firstName").toString() : 
                             (userInfo.get("email") != null ? ((String) userInfo.get("email")).split("@")[0] : "Usuario"));
-            
+
             // Add user to group and remove from invited emails
             addUserToGroup(group, userId, userName, jwtToken);
             group.getInvitedEmails().remove(userEmail);
@@ -1018,6 +1018,9 @@ public class GroupsService {
 
             Group group = groupOpt.get();
             
+            // Normalize group to ensure all matches have correct default values
+            normalizeGroup(group);
+            
             // Verify user has access to this group
             if (!isUserInGroup(group, userId)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
@@ -1114,6 +1117,9 @@ public class GroupsService {
 
             Group group = groupOpt.get();
             
+            // Normalize group to ensure all matches have correct default values
+            normalizeGroup(group);
+            
             // Verify user has access
             if (!isUserInGroup(group, userId)) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
@@ -1182,7 +1188,7 @@ public class GroupsService {
     public ResponseEntity<Map<String, Object>> registerMatchResult(String groupId, String matchId, String userId, Map<String, Object> resultData) {
         // Frontend cannot register real match results
         // Results must be registered by backend/admin only
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
             "error", "Frontend cannot register match results. Results must be registered by backend/admin only."
         ));
     }
@@ -1195,7 +1201,7 @@ public class GroupsService {
     public ResponseEntity<Map<String, Object>> clearMatchResult(String groupId, String matchId, String userId) {
         // Frontend cannot clear real match results
         // Results must be cleared by backend/admin only
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
             "error", "Frontend cannot clear match results. Results must be managed by backend/admin only."
         ));
     }
@@ -1370,11 +1376,11 @@ public class GroupsService {
                     match.setTeam2Id(groupTeams.get(j).getTeamId());
                     match.setTeam2Name(groupTeams.get(j).getTeamName());
                     match.setTeam2Flag(groupTeams.get(j).getTeamFlag());
-                    match.setTeam1Score(null);
-                    match.setTeam2Score(null);
+                    match.setTeam1Score(0); // Default to 0 if match hasn't been played
+                    match.setTeam2Score(0); // Default to 0 if match hasn't been played
                     match.setWinnerTeamId(null);
                     match.setLoserTeamId(null);
-                    match.setIsDraw(null);
+                    match.setIsDraw(false); // Default to false if match hasn't been played
                     match.setMatchDate(null);
                     match.setPlayedDate(null);
                     match.setIsPlayed(false);
@@ -1383,6 +1389,18 @@ public class GroupsService {
                     match.setNextMatchId(null);
                     match.setNextStageId(null);
                     match.setMatchday(currentMatchday);
+                    // Initialize user prediction scores
+                    match.setUserTeam1Score(null);
+                    match.setUserTeam2Score(null);
+                    // Extra time and penalties are NOT available for group stage matches
+                    match.setExtraTime(null);
+                    match.setPenalties(null);
+                    match.setPenaltiesTeam1Score(null);
+                    match.setPenaltiesTeam2Score(null);
+                    match.setUserExtraTime(null);
+                    match.setUserPenalties(null);
+                    match.setUserPenaltiesTeam1Score(null);
+                    match.setUserPenaltiesTeam2Score(null);
                     
                     groupMatches.add(match);
                     matchNumber++;
@@ -1447,7 +1465,7 @@ public class GroupsService {
         System.out.println("   Total matches in group stage: " + totalGroupMatches);
         // Avoid division by zero
         if (numberOfGroups > 0) {
-            System.out.println("   Matches per group: " + (totalGroupMatches / numberOfGroups));
+        System.out.println("   Matches per group: " + (totalGroupMatches / numberOfGroups));
         } else {
             System.out.println("   Matches per group: N/A (no groups created)");
         }
@@ -1480,16 +1498,28 @@ public class GroupsService {
             match.setTeam2Id(null);
             match.setTeam2Name(null);
             match.setTeam2Flag(null);
-            match.setTeam1Score(null);
-            match.setTeam2Score(null);
+            match.setTeam1Score(0); // Default to 0 if match hasn't been played
+            match.setTeam2Score(0); // Default to 0 if match hasn't been played
             match.setWinnerTeamId(null);
             match.setLoserTeamId(null);
-            match.setIsDraw(null);
+            match.setIsDraw(false); // Default to false if match hasn't been played
             match.setMatchDate(null);
             match.setPlayedDate(null);
             match.setIsPlayed(false);
             match.setVenue(null);
             match.setStatus("scheduled");
+            // Initialize user prediction scores
+            match.setUserTeam1Score(null);
+            match.setUserTeam2Score(null);
+            // Extra time and penalties are available for knockout matches
+            match.setExtraTime(null); // Will be set when match is played
+            match.setPenalties(null); // Will be set when match is played
+            match.setPenaltiesTeam1Score(null);
+            match.setPenaltiesTeam2Score(null);
+            match.setUserExtraTime(null); // User can predict this
+            match.setUserPenalties(null); // User can predict this
+            match.setUserPenaltiesTeam1Score(null); // User can predict this
+            match.setUserPenaltiesTeam2Score(null); // User can predict this
             
             // Set next match ID based on bracket structure
             if (!stageId.equals("final") && !stageId.equals("third-place")) {
@@ -1502,6 +1532,8 @@ public class GroupsService {
                 match.setNextStageId(null);
             }
             
+            // For knockout matches, matchday can be null or we can set it based on stage order
+            // Setting it to null as it's only meaningful for group stage matches
             match.setMatchday(null);
             matches.add(match);
         }
@@ -1620,7 +1652,7 @@ public class GroupsService {
     /**
      * Update user prediction scores directly in the match
      */
-    public ResponseEntity<Map<String, Object>> updateMatchPrediction(String groupId, String matchId, String userId, Map<String, Object> predictionData) {
+    public ResponseEntity<Map<String, Object>> updateMatchPrediction(String groupId, String matchId, String userId, Map<String, Object> predictionData, String jwtToken) {
         try {
             Optional<Group> groupOpt = groupsRepository.findById(groupId);
             if (groupOpt.isEmpty()) {
@@ -1672,6 +1704,68 @@ public class GroupsService {
             }
             if (userTeam2Score != null) {
                 match.setUserTeam2Score(userTeam2Score);
+            }
+            
+            // If match has real results, recalculate ALL users' scores and update scoreboard
+            if (match.getIsPlayed() != null && match.getIsPlayed() && 
+                match.getTeam1Score() != null && match.getTeam2Score() != null) {
+                
+                // Get all user IDs in the group
+                List<String> allUserIds = new ArrayList<>();
+                if (group.getUsers() != null) {
+                    for (Group.GroupUser user : group.getUsers()) {
+                        allUserIds.add(user.getId());
+                    }
+                }
+                if (group.getCreatorUserId() != null && !allUserIds.contains(group.getCreatorUserId())) {
+                    allUserIds.add(group.getCreatorUserId());
+                }
+                
+                // Recalculate scores for ALL users by checking all played matches
+                Map<String, Integer> userTotalScores = new HashMap<>();
+                
+                // Iterate through all matches in the tournament structure
+                if (group.getTournamentStructure() != null && group.getTournamentStructure().getStages() != null) {
+                    for (Group.TournamentStructure.Stage stage : group.getTournamentStructure().getStages().values()) {
+                        // Process group stage matches
+                        if (stage.getGroups() != null) {
+                            for (Group.TournamentStructure.GroupStage groupStage : stage.getGroups()) {
+                                if (groupStage.getMatches() != null) {
+                                    for (Group.TournamentStructure.Match m : groupStage.getMatches()) {
+                                        if (m.getIsPlayed() != null && m.getIsPlayed() &&
+                                            m.getTeam1Score() != null && m.getTeam2Score() != null) {
+                                            // Calculate scores for this match for all users
+                                            calculateMatchScoresForAllUsers(group, m, allUserIds, userTotalScores, jwtToken);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Process knockout matches
+                        if (stage.getMatches() != null) {
+                            for (Group.TournamentStructure.Match m : stage.getMatches()) {
+                                if (m.getIsPlayed() != null && m.getIsPlayed() &&
+                                    m.getTeam1Score() != null && m.getTeam2Score() != null) {
+                                    // Calculate scores for this match for all users
+                                    calculateMatchScoresForAllUsers(group, m, allUserIds, userTotalScores, jwtToken);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Update user scores in the group's users array
+                if (group.getUsers() != null) {
+                    for (Group.GroupUser groupUser : group.getUsers()) {
+                        String userInGroupId = groupUser.getId();
+                        Integer totalScore = userTotalScores.getOrDefault(userInGroupId, 0);
+                        groupUser.setScore(totalScore);
+                    }
+                }
+                
+                // Update scoreboard with all users' scores
+                updateScoreboardForGroup(group, userTotalScores);
             }
             
             // Save the group
@@ -1871,8 +1965,7 @@ public class GroupsService {
                                 for (Group.TournamentStructure.Match match : groupStage.getMatches()) {
                                     if (match.getIsPlayed() != null && match.getIsPlayed()) {
                                         // Calculate scores for this match
-                                        calculateMatchScores(groupId, match.getMatchId(), match.getTeam1Score(), 
-                                            match.getTeam2Score(), allUserIds, jwtToken, userTotalScores);
+                                        calculateMatchScores(group, match, allUserIds, jwtToken, userTotalScores);
                                         totalMatchesProcessed++;
                                     }
                                 }
@@ -1885,8 +1978,7 @@ public class GroupsService {
                         for (Group.TournamentStructure.Match match : stage.getMatches()) {
                             if (match.getIsPlayed() != null && match.getIsPlayed()) {
                                 // Calculate scores for this match
-                                calculateMatchScores(groupId, match.getMatchId(), match.getTeam1Score(), 
-                                    match.getTeam2Score(), allUserIds, jwtToken, userTotalScores);
+                                calculateMatchScores(group, match, allUserIds, jwtToken, userTotalScores);
                                 totalMatchesProcessed++;
                             }
                         }
@@ -1894,11 +1986,64 @@ public class GroupsService {
                 }
             }
             
+            // Update user scores in the group's users array
+            if (group.getUsers() != null) {
+                for (Group.GroupUser groupUser : group.getUsers()) {
+                    String userInGroupId = groupUser.getId();
+                    Integer totalScore = userTotalScores.getOrDefault(userInGroupId, 0);
+                    groupUser.setScore(totalScore);
+                }
+            }
+            
+            // Also ensure creator is in users array with updated score
+            if (group.getCreatorUserId() != null) {
+                boolean creatorInUsers = group.getUsers() != null && 
+                    group.getUsers().stream().anyMatch(u -> u.getId().equals(group.getCreatorUserId()));
+                if (creatorInUsers) {
+                    // Update creator's score in users array
+                    for (Group.GroupUser user : group.getUsers()) {
+                        if (user.getId().equals(group.getCreatorUserId())) {
+                            user.setScore(userTotalScores.getOrDefault(group.getCreatorUserId(), 0));
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Also update creator's score if not in users array
+            if (group.getCreatorUserId() != null) {
+                boolean creatorInUsers = group.getUsers() != null && 
+                    group.getUsers().stream().anyMatch(u -> u.getId().equals(group.getCreatorUserId()));
+                if (!creatorInUsers) {
+                    // Creator not in users array, add them
+                    if (group.getUsers() == null) {
+                        group.setUsers(new ArrayList<>());
+                    }
+                    Group.GroupUser creatorUser = new Group.GroupUser();
+                    creatorUser.setId(group.getCreatorUserId());
+                    // Get creator name from auth_service if needed
+                    Map<String, Object> creatorInfo = authClientService.getUserById(group.getCreatorUserId(), jwtToken);
+                    String creatorName = creatorInfo.get("name") != null ? creatorInfo.get("name").toString() : 
+                                        (creatorInfo.get("firstName") != null ? creatorInfo.get("firstName").toString() : 
+                                        (creatorInfo.get("email") != null ? ((String) creatorInfo.get("email")).split("@")[0] : "Usuario"));
+                    creatorUser.setNombre(creatorName);
+                    creatorUser.setScore(userTotalScores.getOrDefault(group.getCreatorUserId(), 0));
+                    group.getUsers().add(creatorUser);
+                }
+            }
+            
+            // Update scoreboard with user scores and rankings
+            updateScoreboardForGroup(group, userTotalScores);
+            
+            // Save the updated group
+            groupsRepository.save(group);
+            
             return ResponseEntity.ok(Map.of(
-                "message", "Scores calculated successfully",
+                "message", "Scores calculated and updated successfully",
                 "groupId", groupId,
                 "totalMatchesProcessed", totalMatchesProcessed,
-                "userScores", userTotalScores
+                "userScores", userTotalScores,
+                "group", group
             ));
         } catch (Exception e) {
             System.err.println("❌ Error calculating scores: " + e.getMessage());
@@ -1911,13 +2056,45 @@ public class GroupsService {
     
     /**
      * Helper method to calculate scores for a specific match
+     * Rules:
+     * - Exact score: 5 points
+     * - Correct result (win/draw/loss) without exact score: 3 points
+     * - Extra time (only knockout): +1 point if user predicted and match went to extra time
+     * - Penalties (only knockout): +2 points if user predicted and match went to penalties
+     * - Exact penalties score (only knockout): +3 points if user predicted exact penalties score
      */
-    private void calculateMatchScores(String groupId, String matchId, Integer actualTeam1Score, 
-            Integer actualTeam2Score, List<String> userIds, String jwtToken, Map<String, Integer> userTotalScores) {
+    private void calculateMatchScores(Group group, Group.TournamentStructure.Match match, 
+            List<String> userIds, String jwtToken, Map<String, Integer> userTotalScores) {
+        calculateMatchScoresForAllUsers(group, match, userIds, userTotalScores, jwtToken);
+    }
+    
+    /**
+     * Calculate scores for all users for a specific match (used by scheduled tasks)
+     * This version doesn't require jwtToken for scheduled tasks
+     */
+    public void calculateMatchScoresForAllUsers(Group group, Group.TournamentStructure.Match match, 
+            List<String> userIds, Map<String, Integer> userTotalScores) {
+        calculateMatchScoresForAllUsers(group, match, userIds, userTotalScores, null);
+    }
+    
+    /**
+     * Internal method to calculate scores for all users for a specific match
+     */
+    private void calculateMatchScoresForAllUsers(Group group, Group.TournamentStructure.Match match, 
+            List<String> userIds, Map<String, Integer> userTotalScores, String jwtToken) {
+        
+        Integer actualTeam1Score = match.getTeam1Score();
+        Integer actualTeam2Score = match.getTeam2Score();
         
         if (actualTeam1Score == null || actualTeam2Score == null) {
             return; // Match not played yet
         }
+        
+        boolean isKnockout = match.getStageId() != null && !match.getStageId().equals("group-stage");
+        Boolean actualExtraTime = match.getExtraTime();
+        Boolean actualPenalties = match.getPenalties();
+        Integer actualPenaltiesTeam1Score = match.getPenaltiesTeam1Score();
+        Integer actualPenaltiesTeam2Score = match.getPenaltiesTeam2Score();
         
         // Determine actual result
         String actualResult;
@@ -1931,22 +2108,41 @@ public class GroupsService {
         
         // Calculate scores for each user
         for (String userId : userIds) {
-            Map<String, Object> predictionResult = authClientService.getUserPrediction(userId, groupId, matchId, jwtToken);
+            Map<String, Object> predictionResult;
+            if (jwtToken != null) {
+                // Use auth_service to get prediction
+                predictionResult = authClientService.getUserPrediction(userId, group.getGroupId(), match.getMatchId(), jwtToken);
+            } else {
+                // For scheduled tasks, we need to get predictions from auth_service
+                // But since we don't have jwtToken, we'll skip this user for now
+                // In a real scenario, you might want to use a service account token
+                // For now, we'll treat it as no prediction (0-0)
+                predictionResult = new HashMap<>();
+                predictionResult.put("exists", false);
+            }
             
             if (predictionResult.containsKey("exists") && (Boolean) predictionResult.get("exists")) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> prediction = (Map<String, Object>) predictionResult.get("prediction");
                 
                 if (prediction != null) {
+                    // Si los scores son null, undefined, o no numéricos, tratarlos como 0-0
                     Integer predTeam1Score = (Integer) prediction.get("team1Score");
                     Integer predTeam2Score = (Integer) prediction.get("team2Score");
                     
-                    if (predTeam1Score != null && predTeam2Score != null) {
+                    if (predTeam1Score == null) {
+                        predTeam1Score = 0;
+                    }
+                    if (predTeam2Score == null) {
+                        predTeam2Score = 0;
+                    }
+                    
+                    // Siempre calcular (incluso si es 0-0)
                         int points = 0;
                         
                         // Check for exact score match
                         if (predTeam1Score.equals(actualTeam1Score) && predTeam2Score.equals(actualTeam2Score)) {
-                            points = 3; // Exact score: 3 points
+                        points = 5; // Exact score: 5 points
                         } else {
                             // Check for correct result
                             String predictedResult;
@@ -1959,18 +2155,44 @@ public class GroupsService {
                             }
                             
                             if (predictedResult.equals(actualResult)) {
-                                points = 1; // Correct result: 1 point
+                            points = 3; // Correct result without exact score: 3 points
                             } else {
                                 points = 0; // Wrong result: 0 points
                             }
                         }
                         
-                        // Update prediction points in auth_service
-                        authClientService.updatePredictionPoints(userId, groupId, matchId, points, jwtToken);
+                    // Additional points for knockout matches (extra time and penalties)
+                    if (isKnockout) {
+                        // Check extra time prediction
+                        Boolean userExtraTime = (Boolean) prediction.get("userExtraTime");
+                        if (userExtraTime != null && userExtraTime && actualExtraTime != null && actualExtraTime) {
+                            points += 1; // +1 point for correct extra time prediction
+                        }
+                        
+                        // Check penalties prediction
+                        Boolean userPenalties = (Boolean) prediction.get("userPenalties");
+                        if (userPenalties != null && userPenalties && actualPenalties != null && actualPenalties) {
+                            points += 2; // +2 points for correct penalties prediction
+                            
+                            // Check exact penalties score
+                            Integer userPenaltiesTeam1Score = (Integer) prediction.get("userPenaltiesTeam1Score");
+                            Integer userPenaltiesTeam2Score = (Integer) prediction.get("userPenaltiesTeam2Score");
+                            if (userPenaltiesTeam1Score != null && userPenaltiesTeam2Score != null &&
+                                actualPenaltiesTeam1Score != null && actualPenaltiesTeam2Score != null &&
+                                userPenaltiesTeam1Score.equals(actualPenaltiesTeam1Score) &&
+                                userPenaltiesTeam2Score.equals(actualPenaltiesTeam2Score)) {
+                                points += 3; // +3 points for exact penalties score
+                            }
+                        }
+                    }
+                    
+                        // Update prediction points in auth_service (only if jwtToken is available)
+                        if (jwtToken != null) {
+                            authClientService.updatePredictionPoints(userId, group.getGroupId(), match.getMatchId(), points, jwtToken);
+                        }
                         
                         // Add to total score
                         userTotalScores.put(userId, userTotalScores.getOrDefault(userId, 0) + points);
-                    }
                 }
             }
         }
@@ -2208,6 +2430,7 @@ public class GroupsService {
 
     /**
      * Normalize a single match: convert matchday from Date to Integer if needed
+     * Also ensure default values for fields that shouldn't be null
      * The getMatchday() method already handles this, but we call it here to ensure
      * the value is properly converted and stored
      */
@@ -2222,6 +2445,36 @@ public class GroupsService {
         if (matchday != null) {
             match.setMatchday(matchday);
         }
+        
+        // Ensure isDraw is false (not null) if match hasn't been played
+        if (match.getIsPlayed() == null || !match.getIsPlayed()) {
+            if (match.getIsDraw() == null) {
+                match.setIsDraw(false);
+            }
+        }
+        
+        // Ensure team1Score and team2Score are 0 (not null) if match hasn't been played
+        if (match.getIsPlayed() == null || !match.getIsPlayed()) {
+            if (match.getTeam1Score() == null) {
+                match.setTeam1Score(0);
+            }
+            if (match.getTeam2Score() == null) {
+                match.setTeam2Score(0);
+            }
+        }
+        
+        // Ensure userTeam1Score and userTeam2Score are explicitly null if not set
+        // (They should remain null until user makes a prediction)
+        // No change needed here as null is the correct default
+        
+        // Ensure status has a default value
+        if (match.getStatus() == null) {
+            if (match.getIsPlayed() != null && match.getIsPlayed()) {
+                match.setStatus("finished");
+            } else {
+                match.setStatus("scheduled");
+            }
+        }
     }
 
     /**
@@ -2235,7 +2488,1071 @@ public class GroupsService {
         
         normalizeGroupUsers(group);
         normalizeMatches(group);
+        normalizeGroupStages(group);
         return group;
+    }
+    
+    /**
+     * Normalize GroupStage objects to ensure teams are properly converted from Document to TeamScore
+     */
+    private void normalizeGroupStages(Group group) {
+        if (group == null || group.getTournamentStructure() == null || 
+            group.getTournamentStructure().getStages() == null) {
+            return;
+        }
+        
+        for (Group.TournamentStructure.Stage stage : group.getTournamentStructure().getStages().values()) {
+            if (stage == null || stage.getGroups() == null) {
+                continue;
+            }
+            
+            for (Group.TournamentStructure.GroupStage groupStage : stage.getGroups()) {
+                if (groupStage == null) {
+                    continue;
+                }
+                
+                // Normalize teams if they exist and are Documents instead of TeamScore objects
+                if (groupStage.getTeams() != null) {
+                    List<Group.TeamScore> normalizedTeams = new ArrayList<>();
+                    
+                    for (Object teamObj : groupStage.getTeams()) {
+                        if (teamObj instanceof Group.TeamScore) {
+                            // Already a TeamScore object, use it as-is
+                            normalizedTeams.add((Group.TeamScore) teamObj);
+                        } else if (teamObj instanceof Document) {
+                            // Convert Document to TeamScore
+                            Document doc = (Document) teamObj;
+                            Group.TeamScore teamScore = new Group.TeamScore();
+                            teamScore.setTeamId(doc.getString("teamId"));
+                            teamScore.setTeamName(doc.getString("teamName"));
+                            teamScore.setTeamFlag(doc.getString("teamFlag"));
+                            teamScore.setPlayed(getIntegerFromDocument(doc, "played"));
+                            teamScore.setWon(getIntegerFromDocument(doc, "won"));
+                            teamScore.setDrawn(getIntegerFromDocument(doc, "drawn"));
+                            teamScore.setLost(getIntegerFromDocument(doc, "lost"));
+                            teamScore.setGoalsFor(getIntegerFromDocument(doc, "goalsFor"));
+                            teamScore.setGoalsAgainst(getIntegerFromDocument(doc, "goalsAgainst"));
+                            teamScore.setGoalDifference(getIntegerFromDocument(doc, "goalDifference"));
+                            teamScore.setPoints(getIntegerFromDocument(doc, "points"));
+                            teamScore.setPosition(getIntegerFromDocument(doc, "position"));
+                            normalizedTeams.add(teamScore);
+                        } else if (teamObj instanceof java.util.Map) {
+                            // Convert Map to TeamScore
+                            @SuppressWarnings("unchecked")
+                            java.util.Map<String, Object> map = (java.util.Map<String, Object>) teamObj;
+                            Group.TeamScore teamScore = new Group.TeamScore();
+                            teamScore.setTeamId(getStringFromMap(map, "teamId"));
+                            teamScore.setTeamName(getStringFromMap(map, "teamName"));
+                            teamScore.setTeamFlag(getStringFromMap(map, "teamFlag"));
+                            teamScore.setPlayed(getIntegerFromMap(map, "played"));
+                            teamScore.setWon(getIntegerFromMap(map, "won"));
+                            teamScore.setDrawn(getIntegerFromMap(map, "drawn"));
+                            teamScore.setLost(getIntegerFromMap(map, "lost"));
+                            teamScore.setGoalsFor(getIntegerFromMap(map, "goalsFor"));
+                            teamScore.setGoalsAgainst(getIntegerFromMap(map, "goalsAgainst"));
+                            teamScore.setGoalDifference(getIntegerFromMap(map, "goalDifference"));
+                            teamScore.setPoints(getIntegerFromMap(map, "points"));
+                            teamScore.setPosition(getIntegerFromMap(map, "position"));
+                            normalizedTeams.add(teamScore);
+                        }
+                    }
+                    
+                    // Replace the teams list with normalized version
+                    groupStage.setTeams(normalizedTeams);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Helper method to safely get Integer from Document
+     */
+    private Integer getIntegerFromDocument(Document doc, String key) {
+        Object value = doc.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        return null;
+    }
+    
+    /**
+     * Helper method to safely get String from Map
+     */
+    private String getStringFromMap(java.util.Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        return value != null ? value.toString() : null;
+    }
+    
+    /**
+     * Helper method to safely get Integer from Map
+     */
+    private Integer getIntegerFromMap(java.util.Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        return null;
+    }
+    
+    /**
+     * Update user scores in group.users[] array
+     * Actualiza los scores y ordena por ranking (público para scheduled tasks)
+     */
+    public void updateScoreboardForGroup(Group group, Map<String, Integer> userTotalScores) {
+        if (group == null || group.getUsers() == null) {
+            return;
+        }
+        
+        // Actualizar score de cada usuario
+        for (Group.GroupUser groupUser : group.getUsers()) {
+            Integer totalScore = userTotalScores.getOrDefault(groupUser.getId(), 0);
+            groupUser.setScore(totalScore);
+        }
+        
+        // Ordenar usuarios por score (mayor a menor)
+        group.getUsers().sort((a, b) -> {
+            int scoreA = a.getScore() != null ? a.getScore() : 0;
+            int scoreB = b.getScore() != null ? b.getScore() : 0;
+            return Integer.compare(scoreB, scoreA); // Descendente
+        });
+    }
+    
+    /**
+     * Calculate score for a specific user and match
+     * Returns the points earned for this match
+     */
+    private int calculateUserScoreForMatch(Group.TournamentStructure.Match match, 
+                                          Integer userTeam1Score, Integer userTeam2Score,
+                                          String userId, String jwtToken) {
+        // Si los scores son null, undefined, o no numéricos, tratarlos como 0-0
+        if (userTeam1Score == null) {
+            userTeam1Score = 0;
+        }
+        if (userTeam2Score == null) {
+            userTeam2Score = 0;
+        }
+        
+        Integer actualTeam1Score = match.getTeam1Score();
+        Integer actualTeam2Score = match.getTeam2Score();
+        
+        if (actualTeam1Score == null || actualTeam2Score == null) {
+            return 0; // Match not played yet
+        }
+        
+        int points = 0;
+        boolean isKnockout = match.getStageId() != null && !match.getStageId().equals("group-stage");
+        
+        // Determine actual result
+        String actualResult;
+        if (actualTeam1Score > actualTeam2Score) {
+            actualResult = "team1_win";
+        } else if (actualTeam2Score > actualTeam1Score) {
+            actualResult = "team2_win";
+        } else {
+            actualResult = "draw";
+        }
+        
+        // Check for exact score match
+        if (userTeam1Score.equals(actualTeam1Score) && userTeam2Score.equals(actualTeam2Score)) {
+            points = 5; // Exact score: 5 points
+        } else {
+            // Check for correct result
+            String predictedResult;
+            if (userTeam1Score > userTeam2Score) {
+                predictedResult = "team1_win";
+            } else if (userTeam2Score > userTeam1Score) {
+                predictedResult = "team2_win";
+            } else {
+                predictedResult = "draw";
+            }
+            
+            if (predictedResult.equals(actualResult)) {
+                points = 3; // Correct result without exact score: 3 points
+            } else {
+                points = 0; // Wrong result: 0 points
+            }
+        }
+        
+        // Additional points for knockout matches (extra time and penalties)
+        if (isKnockout) {
+            // Use values from match object (userExtraTime, userPenalties, etc.)
+            Boolean userExtraTime = match.getUserExtraTime();
+            Boolean userPenalties = match.getUserPenalties();
+            Integer userPenaltiesTeam1Score = match.getUserPenaltiesTeam1Score();
+            Integer userPenaltiesTeam2Score = match.getUserPenaltiesTeam2Score();
+            
+            Boolean actualExtraTime = match.getExtraTime();
+            Boolean actualPenalties = match.getPenalties();
+            Integer actualPenaltiesTeam1Score = match.getPenaltiesTeam1Score();
+            Integer actualPenaltiesTeam2Score = match.getPenaltiesTeam2Score();
+            
+            // Check extra time prediction
+            if (userExtraTime != null && userExtraTime && actualExtraTime != null && actualExtraTime) {
+                points += 1; // +1 point for correct extra time prediction
+            }
+            
+            // Check penalties prediction
+            if (userPenalties != null && userPenalties && actualPenalties != null && actualPenalties) {
+                points += 2; // +2 points for correct penalties prediction
+                
+                // Check exact penalties score
+                if (userPenaltiesTeam1Score != null && userPenaltiesTeam2Score != null &&
+                    actualPenaltiesTeam1Score != null && actualPenaltiesTeam2Score != null &&
+                    userPenaltiesTeam1Score.equals(actualPenaltiesTeam1Score) &&
+                    userPenaltiesTeam2Score.equals(actualPenaltiesTeam2Score)) {
+                    points += 3; // +3 points for exact penalties score
+                }
+            }
+        }
+        
+        return points;
+    }
+    
+    /**
+     * Update user's score in the group
+     * This recalculates the total score for the user by checking all played matches
+     */
+    private void updateUserScoreInGroup(Group group, String userId, String jwtToken) {
+        // Check if user exists in group
+        boolean userFound = false;
+        
+        if (group.getUsers() != null) {
+            for (Group.GroupUser user : group.getUsers()) {
+                if (user.getId().equals(userId)) {
+                    userFound = true;
+                    break;
+                }
+            }
+        }
+        
+        // Recalculate total score for this user by checking all played matches
+        int totalScore = 0;
+        if (group.getTournamentStructure() != null && group.getTournamentStructure().getStages() != null) {
+            for (Group.TournamentStructure.Stage stage : group.getTournamentStructure().getStages().values()) {
+                // Process group stage matches
+                if (stage.getGroups() != null) {
+                    for (Group.TournamentStructure.GroupStage groupStage : stage.getGroups()) {
+                        if (groupStage.getMatches() != null) {
+                            for (Group.TournamentStructure.Match match : groupStage.getMatches()) {
+                                if (match.getIsPlayed() != null && match.getIsPlayed() &&
+                                    match.getTeam1Score() != null && match.getTeam2Score() != null) {
+                                    // Get user's prediction for this match
+                                    // Si es null, undefined, o no numérico, se trata como 0-0
+                                    Integer userPredTeam1 = match.getUserTeam1Score() != null ? match.getUserTeam1Score() : 0;
+                                    Integer userPredTeam2 = match.getUserTeam2Score() != null ? match.getUserTeam2Score() : 0;
+                                    
+                                    // Siempre calcular (incluso si es 0-0)
+                                    int matchPoints = calculateUserScoreForMatch(match, userPredTeam1, userPredTeam2, userId, jwtToken);
+                                    totalScore += matchPoints;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Process knockout matches
+                if (stage.getMatches() != null) {
+                    for (Group.TournamentStructure.Match match : stage.getMatches()) {
+                        if (match.getIsPlayed() != null && match.getIsPlayed() &&
+                            match.getTeam1Score() != null && match.getTeam2Score() != null) {
+                            // Get user's prediction for this match
+                            Integer userPredTeam1 = match.getUserTeam1Score();
+                            Integer userPredTeam2 = match.getUserTeam2Score();
+                            
+                            if (userPredTeam1 != null && userPredTeam2 != null) {
+                                int matchPoints = calculateUserScoreForMatch(match, userPredTeam1, userPredTeam2, userId, jwtToken);
+                                totalScore += matchPoints;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Update user's score in the group
+        if (userFound && group.getUsers() != null) {
+            for (Group.GroupUser user : group.getUsers()) {
+                if (user.getId().equals(userId)) {
+                    user.setScore(totalScore);
+                    break;
+                }
+            }
+        } else {
+            // User not in users array, add them
+            if (group.getUsers() == null) {
+                group.setUsers(new ArrayList<>());
+            }
+            
+            // Get user name
+            String userName = "Usuario";
+            try {
+                Map<String, Object> userInfo = authClientService.getUserById(userId, jwtToken);
+                userName = userInfo.get("name") != null ? userInfo.get("name").toString() : 
+                          (userInfo.get("firstName") != null ? userInfo.get("firstName").toString() : 
+                          (userInfo.get("email") != null ? ((String) userInfo.get("email")).split("@")[0] : "Usuario"));
+            } catch (Exception e) {
+                System.err.println("⚠️ Error getting user name: " + e.getMessage());
+            }
+            
+            Group.GroupUser newUser = new Group.GroupUser();
+            newUser.setId(userId);
+            newUser.setNombre(userName);
+            newUser.setScore(totalScore);
+            group.getUsers().add(newUser);
+        }
+        
+        // Also update creator if it's the creator
+        if (group.getCreatorUserId() != null && group.getCreatorUserId().equals(userId)) {
+            // Already handled above
+        }
+    }
+    
+    /**
+     * Get match by ID (internal endpoint for service-to-service calls)
+     */
+    public ResponseEntity<Map<String, Object>> getMatchByIdInternal(String groupId, String matchId, String serviceTokenHeader) {
+        try {
+            // Validate service token
+            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty() || 
+                !serviceTokenHeader.equals(this.serviceToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Invalid or missing service token"
+                ));
+            }
+            
+            Optional<Group> groupOpt = groupsRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Group not found"
+                ));
+            }
+            
+            Group group = groupOpt.get();
+            
+            // Normalize group to ensure all matches have correct default values
+            normalizeGroup(group);
+            
+            Group.TournamentStructure.Match match = findMatchInGroup(group, matchId);
+            
+            if (match == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Match not found"
+                ));
+            }
+            
+            // Build match response
+            Map<String, Object> matchResponse = new HashMap<>();
+            matchResponse.put("matchId", match.getMatchId());
+            matchResponse.put("team1Id", match.getTeam1Id());
+            matchResponse.put("team2Id", match.getTeam2Id());
+            matchResponse.put("isPlayed", match.getIsPlayed() != null ? match.getIsPlayed() : false);
+            matchResponse.put("team1Score", match.getTeam1Score());
+            matchResponse.put("team2Score", match.getTeam2Score());
+            matchResponse.put("stageId", match.getStageId());
+            matchResponse.put("extraTime", match.getExtraTime());
+            matchResponse.put("penalties", match.getPenalties());
+            matchResponse.put("penaltiesTeam1Score", match.getPenaltiesTeam1Score());
+            matchResponse.put("penaltiesTeam2Score", match.getPenaltiesTeam2Score());
+            
+            return ResponseEntity.ok(Map.of("match", matchResponse));
+            
+        } catch (Exception e) {
+            System.err.println("❌ Error getting match (internal): " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Error getting match: " + e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * Update scoreboard after a prediction is saved and points are calculated
+     * This method is called by auth_service after saving a prediction
+     */
+    public ResponseEntity<Map<String, Object>> updateScoreboardAfterPrediction(String groupId, String userId, Integer newPoints, String serviceTokenHeader) {
+        try {
+            // Validate service token
+            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty() || 
+                !serviceTokenHeader.equals(this.serviceToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Invalid or missing service token"
+                ));
+            }
+            
+            // Get group
+            Optional<Group> groupOpt = groupsRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Group not found"
+                ));
+            }
+            
+            Group group = groupOpt.get();
+            
+            // Calculate total score for this user in this group from group.userPredictions[]
+            // This is the most reliable source since it's stored directly in the group
+            int totalScore = 0;
+            int predictionCount = 0;
+            if (group.getUserPredictions() != null) {
+                for (Group.UserPrediction prediction : group.getUserPredictions()) {
+                    if (prediction.getUserId() != null && prediction.getUserId().equals(userId)) {
+                        Integer points = prediction.getPoints();
+                        if (points != null) {
+                            totalScore += points;
+                            predictionCount++;
+                        }
+                    }
+                }
+            }
+            
+            System.out.println("✅ Calculated total score for user " + userId + " in group " + groupId + ": " + totalScore + " (from " + predictionCount + " predictions)");
+            
+            // Update user's score in group.users array
+            boolean userFound = false;
+            if (group.getUsers() != null) {
+                for (Group.GroupUser user : group.getUsers()) {
+                    if (user.getId().equals(userId)) {
+                        System.out.println("✅ User " + userId + " found in group.users[], updating score from " + user.getScore() + " to " + totalScore);
+                        user.setScore(totalScore);
+                        userFound = true;
+                        break;
+                    }
+                }
+            }
+            
+            // If user not found, add them
+            if (!userFound) {
+                System.out.println("➕ User " + userId + " NOT found in group.users[], creating new user entry");
+                if (group.getUsers() == null) {
+                    group.setUsers(new ArrayList<>());
+                }
+                
+                String userName = "Usuario";
+                try {
+                    Map<String, Object> userInfo = authClientService.getUserById(userId, null);
+                    userName = userInfo.get("name") != null ? userInfo.get("name").toString() : 
+                              (userInfo.get("firstName") != null ? userInfo.get("firstName").toString() : 
+                              (userInfo.get("email") != null ? ((String) userInfo.get("email")).split("@")[0] : "Usuario"));
+                } catch (Exception e) {
+                    System.err.println("⚠️ Error getting user name: " + e.getMessage());
+                }
+                
+                Group.GroupUser newUser = new Group.GroupUser();
+                newUser.setId(userId);
+                newUser.setNombre(userName);
+                newUser.setScore(totalScore);
+                group.getUsers().add(newUser);
+                System.out.println("✅ Created new user in group.users[]: " + userId + " (" + userName + ") with score " + totalScore);
+            }
+            
+            // Recalculate scoreboard with all users' total scores
+            // Calculate directly from group.userPredictions[] (most reliable source)
+            Map<String, Integer> userTotalScores = new HashMap<>();
+            if (group.getUsers() != null) {
+                for (Group.GroupUser groupUser : group.getUsers()) {
+                    int userTotal = 0;
+                    // Calculate from group.userPredictions[]
+                    if (group.getUserPredictions() != null) {
+                        for (Group.UserPrediction prediction : group.getUserPredictions()) {
+                            if (prediction.getUserId() != null && prediction.getUserId().equals(groupUser.getId())) {
+                                Integer points = prediction.getPoints();
+                                if (points != null) {
+                                    userTotal += points;
+                                }
+                            }
+                        }
+                    }
+                    userTotalScores.put(groupUser.getId(), userTotal);
+                    // Also update the score in the user object
+                    groupUser.setScore(userTotal);
+                }
+            }
+            
+            System.out.println("✅ Recalculated scores for all users: " + userTotalScores);
+            
+            // Update scoreboard
+            updateScoreboardForGroup(group, userTotalScores);
+            
+            // Save group
+            groupsRepository.save(group);
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Scoreboard updated successfully",
+                "userId", userId,
+                "totalScore", totalScore,
+                "newPoints", newPoints != null ? newPoints : 0
+            ));
+            
+        } catch (Exception e) {
+            System.err.println("❌ Error updating scoreboard after prediction: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Error updating scoreboard: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Update group with matchesDetail and user score (internal endpoint)
+     * Updates matchesDetail field (same as matchInfo from predictions) and user score in group.users[]
+     * Called by auth_service after saving a prediction
+     */
+    public ResponseEntity<Map<String, Object>> updateMatchesDetailInternal(String groupId, String userId, String competitionId,
+                                                                           List<Map<String, Object>> matchesDetail, Integer userScore,
+                                                                           String serviceTokenHeader) {
+        try {
+            // Validate service token
+            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty() || 
+                !serviceTokenHeader.equals(this.serviceToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Invalid or missing service token"
+                ));
+            }
+            
+            // Get group
+            Optional<Group> groupOpt = groupsRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Group not found"
+                ));
+            }
+            
+            Group group = groupOpt.get();
+            
+            // Update matchesDetail field
+            System.out.println("📝 Setting matchesDetail for group " + groupId);
+            System.out.println("   matchesDetail is null: " + (matchesDetail == null));
+            System.out.println("   matchesDetail size: " + (matchesDetail != null ? matchesDetail.size() : 0));
+            if (matchesDetail != null && !matchesDetail.isEmpty()) {
+                System.out.println("   First match: " + matchesDetail.get(0));
+            }
+            group.setMatchesDetail(matchesDetail);
+            System.out.println("✅ Updated matchesDetail for group " + groupId + " with " + (matchesDetail != null ? matchesDetail.size() : 0) + " matches");
+            
+            // Convert matchesDetail to matchesInfo (same data, different name for user object)
+            List<Map<String, Object>> matchesInfo = matchesDetail;
+            
+            // Update user's score and matchesInfo in group.users array
+            boolean userFound = false;
+            if (group.getUsers() != null) {
+                for (Group.GroupUser user : group.getUsers()) {
+                    if (user.getId() != null && user.getId().equals(userId)) {
+                        System.out.println("✅ User " + userId + " found in group.users[], updating score from " + user.getScore() + " to " + userScore);
+                        user.setScore(userScore != null ? userScore : 0);
+                        user.setUserId(userId); // Ensure userId is set
+                        user.setMatchesInfo(matchesInfo); // Update matchesInfo
+                        userFound = true;
+                        break;
+                    } else if (user.getUserId() != null && user.getUserId().equals(userId)) {
+                        System.out.println("✅ User " + userId + " found in group.users[] (by userId), updating score from " + user.getScore() + " to " + userScore);
+                        user.setScore(userScore != null ? userScore : 0);
+                        user.setId(userId); // Ensure id is set
+                        user.setMatchesInfo(matchesInfo); // Update matchesInfo
+                        userFound = true;
+                        break;
+                    }
+                }
+            }
+            
+            // If user not found, add them
+            if (!userFound) {
+                System.out.println("➕ User " + userId + " NOT found in group.users[], creating new user entry");
+                if (group.getUsers() == null) {
+                    group.setUsers(new ArrayList<>());
+                }
+                
+                String userName = "Usuario";
+                try {
+                    Map<String, Object> userInfo = authClientService.getUserById(userId, null);
+                    userName = userInfo.get("name") != null ? userInfo.get("name").toString() : 
+                              (userInfo.get("firstName") != null ? userInfo.get("firstName").toString() : 
+                              (userInfo.get("email") != null ? ((String) userInfo.get("email")).split("@")[0] : "Usuario"));
+                } catch (Exception e) {
+                    System.err.println("⚠️ Error getting user name: " + e.getMessage());
+                }
+                
+                Group.GroupUser newUser = new Group.GroupUser();
+                newUser.setId(userId); // _id field
+                newUser.setUserId(userId); // userId field
+                newUser.setNombre(userName);
+                newUser.setScore(userScore != null ? userScore : 0);
+                newUser.setMatchesInfo(matchesInfo); // Set matchesInfo
+                group.getUsers().add(newUser);
+                System.out.println("✅ Created new user in group.users[]: " + userId + " (" + userName + ") with score " + userScore + " and " + (matchesInfo != null ? matchesInfo.size() : 0) + " matches");
+            }
+            
+            // Save group
+            System.out.println("💾 Saving group to database...");
+            Group savedGroup = groupsRepository.save(group);
+            System.out.println("✅ Group saved successfully. Group ID: " + groupId);
+            System.out.println("   matchesDetail size: " + (savedGroup.getMatchesDetail() != null ? savedGroup.getMatchesDetail().size() : 0));
+            System.out.println("   users count: " + (savedGroup.getUsers() != null ? savedGroup.getUsers().size() : 0));
+            
+            // Verify the user was updated
+            if (savedGroup.getUsers() != null) {
+                for (Group.GroupUser user : savedGroup.getUsers()) {
+                    if (user.getId() != null && user.getId().equals(userId)) {
+                        System.out.println("   ✅ User " + userId + " in saved group: score=" + user.getScore() + ", matchesInfo size=" + (user.getMatchesInfo() != null ? user.getMatchesInfo().size() : 0));
+                    }
+                }
+            }
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "MatchesDetail and user score updated successfully",
+                "userId", userId,
+                "competitionId", competitionId,
+                "matchesDetailCount", matchesDetail != null ? matchesDetail.size() : 0,
+                "userScore", userScore != null ? userScore : 0
+            ));
+            
+        } catch (Exception e) {
+            System.err.println("❌ Error updating matchesDetail: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Error updating matchesDetail: " + e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * Update multiple groups with matchesDetail and user score (internal endpoint)
+     * Updates user's score and matchesInfo in each group's users array
+     */
+    public ResponseEntity<Map<String, Object>> updateMatchesDetailMultipleInternal(
+            List<String> groupIds, String userId, String competitionId,
+            List<Map<String, Object>> matchesDetail, Integer userScore,
+            String serviceTokenHeader) {
+        try {
+            System.out.println("═══════════════════════════════════════════════════════");
+            System.out.println("🔧 updateMatchesDetailMultipleInternal - START");
+            System.out.println("═══════════════════════════════════════════════════════");
+            System.out.println("groupIds: " + groupIds);
+            System.out.println("userId: " + userId);
+            System.out.println("competitionId: " + competitionId);
+            System.out.println("matchesDetail size: " + (matchesDetail != null ? matchesDetail.size() : 0));
+            System.out.println("userScore: " + userScore);
+            System.out.println("serviceToken present: " + (serviceTokenHeader != null && !serviceTokenHeader.trim().isEmpty()));
+            
+            // Validate service token
+            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty() || 
+                !serviceTokenHeader.equals(this.serviceToken)) {
+                System.err.println("❌ Invalid service token!");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Invalid or missing service token"
+                ));
+            }
+            
+            // Validate required fields
+            if (groupIds == null || groupIds.isEmpty()) {
+                System.err.println("❌ groupIds is null or empty!");
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "groupIds is required and must not be empty"
+                ));
+            }
+            
+            if (userId == null || userId.trim().isEmpty()) {
+                System.err.println("❌ userId is null or empty!");
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "userId is required"
+                ));
+            }
+            
+            // Validate matchesDetail is not null
+            if (matchesDetail == null) {
+                System.err.println("❌ ERROR: matchesDetail is NULL! Cannot update groups.");
+                return ResponseEntity.badRequest().body(Map.of(
+                    "error", "matchesDetail is required and cannot be null"
+                ));
+            }
+            
+            // Convert matchesDetail to matchesInfo (same data, different name for user object)
+            // matchesInfo will contain the exact same structure as matchInfo from users.predictions[competitionId].matchInfo
+            List<Map<String, Object>> matchesInfo = matchesDetail;
+            
+            System.out.println("📋 Converting matchesDetail to matchesInfo for groups");
+            System.out.println("   matchesDetail size: " + matchesDetail.size());
+            if (!matchesDetail.isEmpty()) {
+                System.out.println("   First match in matchesDetail: " + matchesDetail.get(0));
+                System.out.println("   Keys in first match: " + matchesDetail.get(0).keySet());
+            } else {
+                System.out.println("   ⚠️ WARNING: matchesDetail is empty array");
+            }
+            
+            // Get user name once (will be reused for all groups)
+            String userName = "Usuario";
+            try {
+                Map<String, Object> userInfo = authClientService.getUserById(userId, null);
+                userName = userInfo.get("name") != null ? userInfo.get("name").toString() : 
+                          (userInfo.get("firstName") != null ? userInfo.get("firstName").toString() : 
+                          (userInfo.get("email") != null ? ((String) userInfo.get("email")).split("@")[0] : "Usuario"));
+            } catch (Exception e) {
+                System.err.println("⚠️ Error getting user name: " + e.getMessage());
+            }
+            
+            List<Map<String, Object>> results = new ArrayList<>();
+            int successCount = 0;
+            int errorCount = 0;
+            
+            // Process each group
+            for (String groupId : groupIds) {
+                try {
+                    System.out.println("📝 Processing group: " + groupId);
+                    
+                    // Get group
+                    Optional<Group> groupOpt = groupsRepository.findById(groupId);
+                    if (groupOpt.isEmpty()) {
+                        System.err.println("❌ Group not found: " + groupId);
+                        results.add(Map.of(
+                            "groupId", groupId,
+                            "status", "error",
+                            "message", "Group not found"
+                        ));
+                        errorCount++;
+                        continue;
+                    }
+                    
+                    Group group = groupOpt.get();
+                    
+                    // Update matchesDetail field (only if not already set or if it's different)
+                    if (matchesDetail != null) {
+                        group.setMatchesDetail(matchesDetail);
+                        System.out.println("✅ Updated matchesDetail for group " + groupId + " with " + matchesDetail.size() + " matches");
+                    }
+                    
+                    // Update user's score and matchesInfo in group.users array
+                    // Buscar el usuario en users[] por userId y actualizar score y matchesInfo
+                    boolean userFound = false;
+                    if (group.getUsers() != null) {
+                        System.out.println("   Searching for user " + userId + " in " + group.getUsers().size() + " users");
+                        for (Group.GroupUser user : group.getUsers()) {
+                            // Buscar por id o userId
+                            boolean isMatch = (user.getId() != null && user.getId().equals(userId)) ||
+                                            (user.getUserId() != null && user.getUserId().equals(userId));
+                            
+                            if (isMatch) {
+                                System.out.println("   ✅ User " + userId + " found in group.users[]");
+                                System.out.println("      Current score: " + user.getScore());
+                                System.out.println("      New score: " + userScore);
+                                System.out.println("      Current matchesInfo: " + (user.getMatchesInfo() != null ? "exists (" + user.getMatchesInfo().size() + " matches)" : "NULL - will be created"));
+                                System.out.println("      New matchesInfo size: " + (matchesInfo != null ? matchesInfo.size() : 0));
+                                
+                                // Actualizar score
+                                user.setScore(userScore != null ? userScore : 0);
+                                
+                                // Asegurar que userId e id estén seteados
+                                if (user.getId() == null) {
+                                    user.setId(userId);
+                                }
+                                if (user.getUserId() == null) {
+                                    user.setUserId(userId);
+                                }
+                                
+                                // Crear o actualizar matchesInfo con la copia exacta de matchInfo del usuario
+                                // Si matchesInfo no existe, se crea. Si existe, se actualiza completamente.
+                                if (matchesInfo != null) {
+                                    user.setMatchesInfo(matchesInfo);
+                                    System.out.println("      ✅ matchesInfo " + (user.getMatchesInfo() == null ? "created" : "updated") + " with " + matchesInfo.size() + " matches");
+                                    if (!matchesInfo.isEmpty()) {
+                                        System.out.println("      First match in matchesInfo: " + matchesInfo.get(0));
+                                    }
+                                } else {
+                                    // Si matchesInfo es null, crear un array vacío
+                                    user.setMatchesInfo(new ArrayList<>());
+                                    System.out.println("      ⚠️ matchesInfo was null, created empty array");
+                                }
+                                
+                                userFound = true;
+                                System.out.println("      ✅ Updated user score and matchesInfo");
+                                break;
+                            }
+                        }
+                    } else {
+                        System.out.println("   ⚠️ group.getUsers() is null, will create new users array");
+                    }
+                    
+                    // If user not found, add them
+                    if (!userFound) {
+                        System.out.println("   ➕ User " + userId + " NOT found in group.users[], creating new user entry");
+                        if (group.getUsers() == null) {
+                            group.setUsers(new ArrayList<>());
+                        }
+                        
+                        Group.GroupUser newUser = new Group.GroupUser();
+                        newUser.setId(userId); // _id field
+                        newUser.setUserId(userId); // userId field
+                        newUser.setNombre(userName);
+                        newUser.setScore(userScore != null ? userScore : 0);
+                        // Crear matchesInfo - copia exacta de matchInfo del usuario
+                        // Si matchesInfo es null, crear un array vacío
+                        if (matchesInfo != null) {
+                            newUser.setMatchesInfo(matchesInfo);
+                        } else {
+                            newUser.setMatchesInfo(new ArrayList<>());
+                            System.out.println("      ⚠️ matchesInfo was null, created empty array for new user");
+                        }
+                        group.getUsers().add(newUser);
+                        System.out.println("   ✅ Created new user in group.users[]:");
+                        System.out.println("      - userId: " + userId);
+                        System.out.println("      - nombre: " + userName);
+                        System.out.println("      - score: " + userScore);
+                        System.out.println("      - matchesInfo size: " + (matchesInfo != null ? matchesInfo.size() : 0));
+                        if (matchesInfo != null && !matchesInfo.isEmpty()) {
+                            System.out.println("      - First match: " + matchesInfo.get(0));
+                        }
+                    }
+                    
+                    // Update updatedAt timestamp
+                    group.setUpdatedAt(new Date());
+                    
+                    // Save group
+                    System.out.println("💾 Saving group to database...");
+                    System.out.println("   Before save - users count: " + (group.getUsers() != null ? group.getUsers().size() : 0));
+                    if (group.getUsers() != null) {
+                        for (Group.GroupUser u : group.getUsers()) {
+                            if ((u.getId() != null && u.getId().equals(userId)) || 
+                                (u.getUserId() != null && u.getUserId().equals(userId))) {
+                                System.out.println("   Before save - user score: " + u.getScore());
+                                System.out.println("   Before save - user matchesInfo size: " + (u.getMatchesInfo() != null ? u.getMatchesInfo().size() : 0));
+                                break;
+                            }
+                        }
+                    }
+                    
+                    Group savedGroup = groupsRepository.save(group);
+                    System.out.println("✅ Group saved successfully. Group ID: " + groupId);
+                    
+                    // Verify the user was updated correctly AFTER saving
+                    if (savedGroup.getUsers() != null) {
+                        System.out.println("   After save - users count: " + savedGroup.getUsers().size());
+                        boolean userVerified = false;
+                        for (Group.GroupUser savedUser : savedGroup.getUsers()) {
+                            if ((savedUser.getId() != null && savedUser.getId().equals(userId)) || 
+                                (savedUser.getUserId() != null && savedUser.getUserId().equals(userId))) {
+                                System.out.println("   ✅ Verified user in saved group:");
+                                System.out.println("      - id: " + savedUser.getId());
+                                System.out.println("      - userId: " + savedUser.getUserId());
+                                System.out.println("      - nombre: " + savedUser.getNombre());
+                                System.out.println("      - score: " + savedUser.getScore());
+                                System.out.println("      - matchesInfo: " + (savedUser.getMatchesInfo() != null ? "EXISTS" : "NULL"));
+                                System.out.println("      - matchesInfo size: " + (savedUser.getMatchesInfo() != null ? savedUser.getMatchesInfo().size() : 0));
+                                if (savedUser.getMatchesInfo() != null && !savedUser.getMatchesInfo().isEmpty()) {
+                                    System.out.println("      - First match: " + savedUser.getMatchesInfo().get(0));
+                                } else if (savedUser.getMatchesInfo() == null) {
+                                    System.err.println("      ❌ ERROR: matchesInfo is NULL after save!");
+                                }
+                                userVerified = true;
+                                break;
+                            }
+                        }
+                        if (!userVerified) {
+                            System.err.println("   ❌ ERROR: User " + userId + " NOT FOUND in saved group!");
+                        }
+                    } else {
+                        System.err.println("   ❌ ERROR: savedGroup.getUsers() is NULL!");
+                    }
+                    
+                    results.add(Map.of(
+                        "groupId", groupId,
+                        "status", "success",
+                        "message", "User score and matchesInfo updated successfully"
+                    ));
+                    successCount++;
+                    
+                } catch (Exception e) {
+                    System.err.println("❌ Error updating group " + groupId + ": " + e.getMessage());
+                    e.printStackTrace();
+                    results.add(Map.of(
+                        "groupId", groupId,
+                        "status", "error",
+                        "message", "Error updating group: " + e.getMessage()
+                    ));
+                    errorCount++;
+                }
+            }
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Processed " + groupIds.size() + " groups",
+                "successCount", successCount,
+                "errorCount", errorCount,
+                "userId", userId,
+                "competitionId", competitionId,
+                "matchesDetailCount", matchesDetail != null ? matchesDetail.size() : 0,
+                "userScore", userScore != null ? userScore : 0,
+                "results", results
+            ));
+            
+        } catch (Exception e) {
+            System.err.println("❌ Error updating multiple groups: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Error updating multiple groups: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Update group with user prediction (internal endpoint)
+     * Adds or updates UserPrediction in group.userPredictions[]
+     * Called by auth_service after saving a prediction
+     */
+    public ResponseEntity<Map<String, Object>> updateGroupPrediction(String groupId, String userId, String matchId,
+                                                                     Integer userTeam1Score, Integer userTeam2Score,
+                                                                     Boolean userExtraTime, Boolean userPenalties,
+                                                                     Integer userPenaltiesTeam1Score, Integer userPenaltiesTeam2Score,
+                                                                     Integer points, String serviceTokenHeader) {
+        try {
+            // Validate service token
+            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty() || 
+                !serviceTokenHeader.equals(this.serviceToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Invalid or missing service token"
+                ));
+            }
+            
+            // Get group
+            Optional<Group> groupOpt = groupsRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Group not found"
+                ));
+            }
+            
+            Group group = groupOpt.get();
+            
+            // Initialize userPredictions array if null
+            if (group.getUserPredictions() == null) {
+                group.setUserPredictions(new ArrayList<>());
+                System.out.println("➕ Initialized userPredictions array for group " + groupId);
+            }
+            
+            // Remove existing prediction for this user and match if exists
+            int beforeSize = group.getUserPredictions().size();
+            group.getUserPredictions().removeIf(pred -> 
+                userId.equals(pred.getUserId()) && matchId.equals(pred.getMatchId())
+            );
+            int afterRemoveSize = group.getUserPredictions().size();
+            if (beforeSize != afterRemoveSize) {
+                System.out.println("🔄 Removed existing prediction for user " + userId + ", match " + matchId);
+            }
+            
+            // Create new UserPrediction
+            Group.UserPrediction userPrediction = new Group.UserPrediction();
+            userPrediction.setMatchId(matchId);
+            userPrediction.setUserId(userId);
+            userPrediction.setUserTeam1Score(userTeam1Score);
+            userPrediction.setUserTeam2Score(userTeam2Score);
+            if (userExtraTime != null) {
+                userPrediction.setUserExtraTime(userExtraTime);
+            }
+            if (userPenalties != null) {
+                userPrediction.setUserPenalties(userPenalties);
+            }
+            if (userPenaltiesTeam1Score != null) {
+                userPrediction.setUserPenaltiesTeam1Score(userPenaltiesTeam1Score);
+            }
+            if (userPenaltiesTeam2Score != null) {
+                userPrediction.setUserPenaltiesTeam2Score(userPenaltiesTeam2Score);
+            }
+            userPrediction.setPredictedDate(new Date());
+            userPrediction.setPoints(points != null ? points : 0);
+            
+            // Add prediction to group
+            group.getUserPredictions().add(userPrediction);
+            
+            // Update updatedAt
+            group.setUpdatedAt(new Date());
+            
+            // Save group
+            groupsRepository.save(group);
+            
+            System.out.println("✅ UserPrediction saved in group " + groupId + " for user " + userId + ", match " + matchId + ", points: " + userPrediction.getPoints() + " (total predictions in group: " + group.getUserPredictions().size() + ")");
+            
+            return ResponseEntity.ok(Map.of(
+                "message", "Group prediction updated successfully",
+                "groupId", groupId,
+                "userId", userId,
+                "matchId", matchId
+            ));
+            
+        } catch (Exception e) {
+            System.err.println("❌ Error updating group prediction: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Error updating group prediction: " + e.getMessage()
+            ));
+        }
+    }
+
+    /**
+     * Get basic group information (internal endpoint)
+     * Returns competitionId and other basic info needed by other services
+     */
+    public ResponseEntity<Map<String, Object>> getGroupInfoInternal(String groupId, String serviceTokenHeader) {
+        try {
+            // Validate service token
+            if (serviceTokenHeader == null || serviceTokenHeader.trim().isEmpty() || 
+                !serviceTokenHeader.equals(this.serviceToken)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "error", "Invalid or missing service token"
+                ));
+            }
+            
+            Optional<Group> groupOpt = groupsRepository.findById(groupId);
+            if (groupOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "error", "Group not found"
+                ));
+            }
+            
+            Group group = groupOpt.get();
+            
+            Map<String, Object> groupInfo = new HashMap<>();
+            groupInfo.put("groupId", group.getGroupId());
+            groupInfo.put("competitionId", group.getCompetitionId());
+            groupInfo.put("competitionName", group.getCompetitionName());
+            groupInfo.put("name", group.getName());
+            
+            // Try to determine category from competitionId by searching competitions
+            // This is a fallback - ideally category should be stored in Group
+            String category = null;
+            try {
+                // Search in all categories
+                String[] categories = {"fifaNationalTeamCups", "fifaOfficialClubCups", "nationalClubLeagues"};
+                for (String cat : categories) {
+                    Map<String, Object> competition = competitionsClient.getCompetitionWithTeams(cat, group.getCompetitionId(), null);
+                    if (competition != null && !competition.containsKey("error")) {
+                        category = cat;
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("⚠️ Could not determine category for competition: " + group.getCompetitionId());
+            }
+            
+            if (category != null) {
+                groupInfo.put("category", category);
+            }
+            
+            return ResponseEntity.ok(groupInfo);
+        } catch (Exception e) {
+            System.err.println("❌ Error getting group info (internal): " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                "error", "Error getting group info: " + e.getMessage()
+            ));
+        }
     }
 }
 

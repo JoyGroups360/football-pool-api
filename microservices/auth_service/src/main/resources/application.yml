@@ -30,3 +30,7 @@ jwt:
   secret: ${JWT_SECRET:bXlTZWNyZXRLZXlGb3JKV1RUb2tlbkdlbmVyYXRpb24xMjM0NTY3ODlBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWg==}
   expiration: 86400000  # 24 hours in milliseconds
   refresh-expiration: 604800000  # 7 days in milliseconds
+
+# Service-to-Service Authentication
+service:
+  token: ${SERVICE_TOKEN:groups-service-internal-token-2024-secure-key-only-for-groups-service}

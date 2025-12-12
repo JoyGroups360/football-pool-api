@@ -1,6 +1,7 @@
 package com.leon.ideas.groups.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -13,6 +14,9 @@ public class AuthClientService {
 
     @Autowired
     private RestTemplate restTemplate;
+    
+    @Value("${service.token}")
+    private String serviceToken;
 
     private static final String AUTH_SERVICE_URL = "http://localhost:8080/football-pool/v1/api/auth";
 
@@ -85,6 +89,7 @@ public class AuthClientService {
     
     /**
      * Get all predictions for a user, optionally filtered by groupId
+     * If jwtToken is null, uses service token for internal calls
      */
     public Map<String, Object> getUserPredictions(String userId, String groupId, String jwtToken) {
         try {
@@ -94,7 +99,12 @@ public class AuthClientService {
             }
             
             HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + jwtToken);
+            if (jwtToken != null) {
+                headers.set("Authorization", "Bearer " + jwtToken);
+            } else {
+                // Use service token for internal calls
+                headers.set("X-Service-Token", serviceToken);
+            }
             headers.setContentType(MediaType.APPLICATION_JSON);
             
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -118,8 +128,14 @@ public class AuthClientService {
     
     /**
      * Get a specific prediction for a user, group, and match
+     * Uses JWT token if provided, otherwise uses service token for internal calls
      */
     public Map<String, Object> getUserPrediction(String userId, String groupId, String matchId, String jwtToken) {
+        // If jwtToken is null, use service token for internal calls
+        if (jwtToken == null) {
+            return getUserPredictionInternal(userId, groupId, matchId);
+        }
+        
         try {
             String url = AUTH_SERVICE_URL + "/" + userId + "/predictions/" + groupId + "/" + matchId;
             
@@ -141,6 +157,36 @@ public class AuthClientService {
             }
         } catch (Exception e) {
             System.err.println("❌ Error getting prediction: " + e.getMessage());
+            e.printStackTrace();
+        }
+        return Map.of("exists", false, "prediction", null);
+    }
+    
+    /**
+     * Get a specific prediction using service token (for internal/scheduled tasks)
+     */
+    private Map<String, Object> getUserPredictionInternal(String userId, String groupId, String matchId) {
+        try {
+            String url = AUTH_SERVICE_URL + "/internal/predictions/" + userId + "/" + groupId + "/" + matchId;
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("X-Service-Token", serviceToken);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            
+            ResponseEntity<Map> response = restTemplate.exchange(
+                url,
+                HttpMethod.GET,
+                entity,
+                Map.class
+            );
+            
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                return response.getBody();
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error getting prediction with service token: " + e.getMessage());
             e.printStackTrace();
         }
         return Map.of("exists", false, "prediction", null);
@@ -173,7 +219,8 @@ public class AuthClientService {
     }
     
     /**
-     * Get user information by userId (name, email, etc.)
+     * Get user information by userId (name, email, groupScores, etc.)
+     * If jwtToken is null, uses service token for internal calls
      */
     public Map<String, Object> getUserById(String userId, String jwtToken) {
         try {
@@ -181,7 +228,12 @@ public class AuthClientService {
             String url = AUTH_SERVICE_URL;
             
             HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + jwtToken);
+            if (jwtToken != null) {
+                headers.set("Authorization", "Bearer " + jwtToken);
+            } else {
+                // Use service token for internal calls
+                headers.set("X-Service-Token", serviceToken);
+            }
             headers.setContentType(MediaType.APPLICATION_JSON);
             
             HttpEntity<String> entity = new HttpEntity<>(headers);
@@ -194,7 +246,8 @@ public class AuthClientService {
             );
             
             if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map<String, Object> body = response.getBody();
+                @SuppressWarnings("unchecked")
+                Map<String, Object> body = (Map<String, Object>) response.getBody();
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> users = (List<Map<String, Object>>) body.get("users");
                 

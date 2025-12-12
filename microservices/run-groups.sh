@@ -5,3 +5,4 @@ cd "$(dirname "$0")/groups_service"
 mvn spring-boot:run
 
 
+
